@@ -12,13 +12,14 @@ A Bluetooth Low Energy Tool for macOS.
 
 ### Installation
 
-#### Mint
+#### [Mint](https://github.com/yonaskolb/mint)
 
 `mint install mickeyl/core-bluetooth-tool`
 
-#### Homebrew
+#### [Homebrew](https://brew.sh)
 
-TBD
+`brew tap mickeyl/formulae`
+`brew install core-bluetooth-tool`
 
 ### Usage
 

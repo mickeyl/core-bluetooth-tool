@@ -2,18 +2,16 @@ prefix ?= /usr/local
 bindir = $(prefix)/bin
 libdir = $(prefix)/lib
 
-app = core-bluetooth-tool
-
 build:
 	swift build -c release --disable-sandbox
 
 install: build
-	install ".build/release/$app" "$(bindir)"
+	install ".build/release/core-bluetooth-tool" "$(bindir)"
 	install_name_tool -change \
-		"$(bindir)/$app"
+		"$(bindir)/core-bluetooth-tool"
 
 uninstall:
-	rm -rf "$(bindir)/$app"
+	rm -rf "$(bindir)/core-bluetooth-tool"
 
 clean:
 	rm -rf .build
