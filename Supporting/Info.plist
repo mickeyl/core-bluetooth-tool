@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>de.vanille.core-bluetooth-tool</string>
+    <key>CFBundleName</key>
+    <string>core-bluetooth-tool</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Scan BLE devices</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Scan BLE devices</string>
+</dict>
+</plist>
