@@ -1,6 +1,6 @@
 # core-bluetooth-tool
 
-A Bluetooth Low Energy Tool for macOS.
+Bluetooth Low Energy command line tool for macOS.
 
 ## Features
 
@@ -14,22 +14,30 @@ A Bluetooth Low Energy Tool for macOS.
 
 #### [Mint](https://github.com/yonaskolb/mint)
 
-`mint install mickeyl/core-bluetooth-tool`
+```sh
+mint install mickeyl/core-bluetooth-tool
+```
 
 #### [Homebrew](https://brew.sh)
 
-`brew tap mickeyl/formulae`
-`brew install core-bluetooth-tool`
+```sh
+brew tap mickeyl/formulae
+brew install core-bluetooth-tool
+```
 
 ### Usage
 
 Scan BLE devices in vincinity:
 
-`core-bluetooth-tool scan`
+```sh
+core-bluetooth-tool scan
+```
 
-Establishing a serial bridge, e.g. to a BLE device that provides a serial communication service FFF0:
+Establish a serial bridge to BLE device providing a serial communication service, e.g., with a UUID of `FFF0`:
 
-`core-bluetooth-tool bridge fff0`
+```sh
+core-bluetooth-tool bridge fff0
+```
 
 ## Motivation
 
