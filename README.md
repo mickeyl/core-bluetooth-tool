@@ -14,7 +14,7 @@ A Bluetooth Low Energy Tool for macOS.
 
 #### Mint
 
-TBD
+`mint install mickeyl/core-bluetooth-tool`
 
 #### Homebrew
 
