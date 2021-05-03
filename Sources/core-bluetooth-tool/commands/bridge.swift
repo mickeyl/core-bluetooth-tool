@@ -33,7 +33,7 @@ struct Bridge: ParsableCommand {
                 print("Error: Can't build stream: \(result)")
                 Foundation.exit(-1)
             }
-            let deviceName = streams.0.CC_name ?? "Unknown"
+            let deviceName = streams.0.CC_meta?.name ?? "Unknown"
             print("Connected to BLE device '\(deviceName)'.")
             streamBridge.bleInputStream = streams.0
             streamBridge.bleOutputStream = streams.1
