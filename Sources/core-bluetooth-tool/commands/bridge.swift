@@ -5,6 +5,9 @@ import ArgumentParser
 import CoreBluetooth
 import CornucopiaStreams
 import Foundation
+import os.log
+
+fileprivate var log = OSLog(subsystem: "core-bluetooth-tool", category: "bridge")
 
 var streamBridge: StreamBridge!
 
@@ -15,6 +18,9 @@ struct Bridge: ParsableCommand {
     @Argument(help: "Service UUID")
     private var uuid: String
 
+    @Option(name: .shortAndLong, help: "The filename to write the PTY path to.")
+    var fileName: String?
+
     func run() throws {
 
         guard CBUUID.CC_isValid(string: self.uuid) else {
@@ -22,8 +28,58 @@ struct Bridge: ParsableCommand {
             Foundation.exit(-1)
         }
 
-        streamBridge = self.openPty()
+        streamBridge = self.createBridge()
+        self.connectBLE()
 
+        let loop = RunLoop.current
+        while loop.run(mode: .default, before: Date.distantFuture) {
+            loop.run()
+        }
+    }
+}
+
+private extension Bridge {
+
+    func createBridge() -> StreamBridge {
+        let (master, slave) = self.openPty()
+        return StreamBridge(masterHandle: master, slaveHandle: slave) {
+            let bleStreams = (streamBridge.bleInputStream, streamBridge.bleOutputStream)
+            streamBridge = self.createBridge()
+            streamBridge.bleInputStream = bleStreams.0
+            streamBridge.bleOutputStream = bleStreams.1
+        }
+    }
+
+    func openPty() -> (master: FileHandle, slave: FileHandle) {
+        var master: Int32 = 0
+        var slave: Int32 = 0
+        guard openpty(&master, &slave, nil, nil, nil) != -1 else {
+            print("Error: Can't open pty: \(errno)")
+            Foundation.exit(-1)
+        }
+        let slaveNameCString = ttyname(slave)
+        let slaveName = String(cString: slaveNameCString!)
+        self.dumpPtyName(slaveName)
+
+        let masterHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
+        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
+        return (masterHandle, slaveHandle)
+    }
+
+    func dumpPtyName(_ pty: String) {
+        print("Created \(pty). Ready to communicate.")
+        guard let path = self.fileName else { return }
+        let url = URL(fileURLWithPath: path)
+        let data = pty.data(using: .utf8)!
+        do {
+            try data.write(to: url)
+            print("Wrote \(pty) to \(url)")
+        } catch {
+            print("Can't pty path write to \(url): \(error)")
+        }
+    }
+
+    func connectBLE() {
         let uuid = CBUUID(string: self.uuid)
         print("Scanning for a device with service UUID '\(uuid)'…")
         let url = URL(string: "ble://\(uuid)")!
@@ -38,29 +94,6 @@ struct Bridge: ParsableCommand {
             streamBridge.bleInputStream = streams.0
             streamBridge.bleOutputStream = streams.1
         }
-
-        let loop = RunLoop.current
-        while loop.run(mode: .default, before: Date.distantFuture) {
-            loop.run()
-        }
-    }
-
-    func openPty() -> StreamBridge {
-
-        var master: Int32 = 0
-        var slave: Int32 = 0
-        guard openpty(&master, &slave, nil, nil, nil) != -1 else {
-            print("Error: Can't open pty: \(errno)")
-            Foundation.exit(-1)
-        }
-        let slaveNameCString = ttyname(slave)
-        let slaveName = String(cString: slaveNameCString!)
-        print("Created \(slaveName). Ready to communicate.")
-
-        let masterHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
-        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
-
-        return StreamBridge(masterHandle: masterHandle, slaveHandle: slaveHandle)
     }
 }
 
@@ -68,10 +101,11 @@ class StreamBridge: NSObject, StreamDelegate {
 
     var masterHandle: FileHandle!
     var slaveHandle: FileHandle!
+    var ptyCloseHandler: ()->()?
 
     var ptyInputStream: InputStream? {
         didSet {
-            print("opening pty input stream…")
+            os_log("Opening PTY input stream...", log: log, type: .debug)
             self.ptyInputStream?.schedule(in: RunLoop.current, forMode: .default)
             self.ptyInputStream?.delegate = self
             self.ptyInputStream?.open()
@@ -79,7 +113,7 @@ class StreamBridge: NSObject, StreamDelegate {
     }
     var ptyOutputStream: OutputStream? {
         didSet {
-            print("opening pty output stream…")
+            os_log("Opening PTY output stream...", log: log, type: .debug)
             self.ptyOutputStream?.schedule(in: RunLoop.current, forMode: .default)
             self.ptyOutputStream?.delegate = self
             self.ptyOutputStream?.open()
@@ -99,19 +133,16 @@ class StreamBridge: NSObject, StreamDelegate {
         }
     }
 
-    init(masterHandle: FileHandle, slaveHandle: FileHandle) {
+    init(masterHandle: FileHandle, slaveHandle: FileHandle, ptyCloseHandler: @escaping(()->())) {
+        self.ptyCloseHandler = ptyCloseHandler
         super.init()
-
-        self.masterHandle = masterHandle
-        self.slaveHandle = slaveHandle
-        DispatchQueue.main.async {
-            self.ptyInputStream = FileHandleInputStream(fileHandle: masterHandle)
-            self.ptyOutputStream = FileHandleOutputStream(fileHandle: masterHandle)
-        }
+        self.createPtyStreams(masterHandle: masterHandle, slaveHandle: slaveHandle)
     }
 
     func stream(_ aStream: Stream, handle eventCode: Stream.Event) {
-        print("stream \(aStream) event \(eventCode)")
+        #if DEBUG
+        os_log("Stream %@, event %@", log: log, type: .debug, aStream.description, eventCode.description)
+        #endif
 
         switch (aStream, eventCode) {
 
@@ -120,10 +151,14 @@ class StreamBridge: NSObject, StreamDelegate {
                 let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
                 let readBytes = ptyInputStream!.read(buffer, maxLength: bufferSize)
                 guard readBytes > 0 else {
-                    fatalError("PTY EOF?")
+                    self.ptyInputStream?.close()
+                    self.ptyOutputStream?.close()
+                    print("PTY did close. Reopening...")
+                    self.ptyCloseHandler()
+                    return
                 }
                 guard let outputStream = bleOutputStream else {
-                    print("BLE output stream not yet connected… swallowing character")
+                    os_log("BLE output stream not yet connected. Swallowing character...", log: log, type: .debug)
                     return
                 }
                 outputStream.write(buffer, maxLength: readBytes)
@@ -136,7 +171,7 @@ class StreamBridge: NSObject, StreamDelegate {
                     fatalError("BLE EOF?")
                 }
                 guard let outputStream = ptyOutputStream else {
-                    print("PTY output stream not yet connected… swallowing character")
+                    os_log("PTY output stream not yet connected… swallowing character", log: log, type: .debug)
                     return
                 }
                 outputStream.write(buffer, maxLength: readBytes)
@@ -144,6 +179,19 @@ class StreamBridge: NSObject, StreamDelegate {
             default:
                 break
 
+        }
+    }
+}
+
+private extension StreamBridge {
+
+    func createPtyStreams(masterHandle: FileHandle, slaveHandle: FileHandle) {
+
+        self.masterHandle = masterHandle
+        self.slaveHandle = slaveHandle
+        DispatchQueue.main.async {
+            self.ptyInputStream = FileHandleInputStream(fileHandle: masterHandle)
+            self.ptyOutputStream = FileHandleOutputStream(fileHandle: masterHandle)
         }
     }
 

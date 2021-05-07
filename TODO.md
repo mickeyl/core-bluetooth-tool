@@ -1,6 +1,8 @@
 # Quick'n'dirty TODO List
 
-- [ ] Remove excessive debug output and integrate `os_log`
+- [x] Bridge: Reopen (another) PTY, if we get an EOF
+- [x] Bridge: Remove excessive debug output and integrate `os_log`
+- [x] Bridge: Allow writing the PTY to a file, so that another process can pick it up
 - [ ] Add discovery
 - [ ] Read
 - [ ] Write
