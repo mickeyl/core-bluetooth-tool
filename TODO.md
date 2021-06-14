@@ -4,6 +4,7 @@
 - [x] Bridge: Remove excessive debug output and integrate `os_log`
 - [x] Bridge: Allow writing the PTY to a file, so that another process can pick it up
 - [ ] Moan, if Bluetooth is powered off
+- [ ] Don't fatalError(), if BLE EOF is detected
 - [ ] Add discovery
 - [ ] Read
 - [ ] Write
