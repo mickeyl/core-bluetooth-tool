@@ -151,7 +151,9 @@ extension Scanner: CBPeripheralDelegate {
             print("Can't discover services for \(peripheral): \(error)")
             Foundation.exit(-1)
         }
-        print("Did discover services: \(peripheral.services)")
-    }
-    
+        peripheral.services?.forEach { service in
+            let primary = service.isPrimary ? "PRIMARY" : ""
+            print("\(service.uuid) \(primary)")
+        }
+    }    
 }
