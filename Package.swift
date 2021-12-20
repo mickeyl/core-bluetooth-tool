@@ -5,13 +5,13 @@ import PackageDescription
 let package = Package(
     name: "core-bluetooth-tool",
     platforms: [
-        .macOS("10.15.4")
+        .macOS("12")
     ],
     products: [
         .executable(name: "core-bluetooth-tool", targets: ["core-bluetooth-tool"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", .upToNextMajor(from: "0.4.1")),
+        .package(url: "https://github.com/apple/swift-argument-parser", .upToNextMajor(from: "1.0.2")),
         .package(url: "https://github.com/Cornucopia-Swift/CornucopiaStreams.git", .branch("master")),
     ],
     targets: [
