@@ -224,6 +224,17 @@ extension Scanner: CBPeripheralDelegate {
             }
             let p = properties.joined(separator: ", ")
             print("(C) \(service.uuid).\(characteristic.uuid)\t\(p)")
+            peripheral.discoverDescriptors(for: characteristic)
+        }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("Can't discover descriptors for \(peripheral).\(characteristic.service!).\(characteristic): \(error)")
+            return
+        }
+        characteristic.descriptors?.forEach { descriptor in
+            print("(D) \(characteristic.service!.uuid).\(characteristic.uuid).\(descriptor.uuid)")
         }
     }
 }
