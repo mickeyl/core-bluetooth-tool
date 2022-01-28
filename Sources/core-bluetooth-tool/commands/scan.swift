@@ -11,7 +11,7 @@ struct Scan: ParsableCommand {
     
     public static let configuration = CommandConfiguration(abstract: "Scan BLE devices")
     
-    @Argument(help: "Specify an entity to scan for, either service, service.characteristic, or service.characteristic.descriptor. If you're running macOS Big Sur or older, there's also support for scanning by device, device.service, device.service.characteristic, and device.service.characteristic.descriptor")
+    @Argument(help: "Specify an entity to scan for, either service, service.characteristic, or service.characteristic.descriptor. If you're running macOS Catalina or older, there's also support for scanning by device, device.service, device.service.characteristic, and device.service.characteristic.descriptor")
     private var entity: String?
     
     func loop() {
