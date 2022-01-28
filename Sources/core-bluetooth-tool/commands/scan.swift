@@ -187,9 +187,43 @@ extension Scanner: CBPeripheralDelegate {
         }
 
         service.characteristics?.forEach { characteristic in
-            
-            print("(C) \(service.uuid).\(characteristic.uuid)")
 
+            var properties: [String] = []
+            if characteristic.properties.contains(.broadcast) { properties.append("Broadcast") }
+            if characteristic.properties.contains(.read) { properties.append("Read") }
+            if characteristic.properties.contains(.writeWithoutResponse) {
+                if characteristic.properties.contains(.authenticatedSignedWrites) {
+                    properties.append("Write w/o Response [SIGNED]")
+                } else {
+                    properties.append("Write w/o Response")
+                }
+            }
+            if characteristic.properties.contains(.write) {
+                if characteristic.properties.contains(.authenticatedSignedWrites) {
+                    properties.append("Write [SIGNED]")
+                } else {
+                    properties.append("Write")
+                }
+            }
+            if characteristic.properties.contains(.notify) {
+                if characteristic.properties.contains(.notifyEncryptionRequired) {
+                    properties.append("Notify [ENCRYPTED]")
+                } else {
+                    properties.append("Notify")
+                }
+            }
+            if characteristic.properties.contains(.indicate) {
+                if characteristic.properties.contains(.indicateEncryptionRequired) {
+                    properties.append("Indicate [ENCRYPTED]")
+                } else {
+                    properties.append("Indicate")
+                }
+            }
+            if characteristic.properties.contains(.extendedProperties) {
+                properties.append("Extended")
+            }
+            let p = properties.joined(separator: ", ")
+            print("(C) \(service.uuid).\(characteristic.uuid)\t\(p)")
         }
     }
 }
