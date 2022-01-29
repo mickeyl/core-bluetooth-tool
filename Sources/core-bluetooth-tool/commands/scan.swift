@@ -147,8 +147,7 @@ extension Scanner: CBCentralManagerDelegate {
         let identifier = peripheral.identifier
         guard self.peripherals[identifier] == nil else { return }
         
-        let name = peripheral.name ?? "(Unknown)"
-        print("(P) \(identifier)\t\(name)")
+        print("(P) \(identifier)\t\(peripheral.CC_name)")
         self.peripherals[identifier] = peripheral
 
         if self.peripheralIdentifier == nil {
@@ -174,7 +173,7 @@ extension Scanner: CBPeripheralDelegate {
         }
         peripheral.services?.forEach { service in
             let primary = service.isPrimary ? "PRIMARY" : ""
-            print("(S) \(service.uuid)\t\(primary)")
+            print("(S) \(peripheral.identifier)\t\(peripheral.CC_name)\t\(service.uuid)\t\(primary)")
 
             peripheral.discoverCharacteristics(nil, for: service)
         }
@@ -223,7 +222,7 @@ extension Scanner: CBPeripheralDelegate {
                 properties.append("Extended")
             }
             let p = properties.joined(separator: ", ")
-            print("(C) \(service.uuid).\(characteristic.uuid)\t\(p)")
+            print("(C) \(peripheral.identifier)\t\(peripheral.CC_name)\t\(service.uuid).\(characteristic.uuid)\t\(p)")
             peripheral.discoverDescriptors(for: characteristic)
         }
     }
@@ -234,7 +233,12 @@ extension Scanner: CBPeripheralDelegate {
             return
         }
         characteristic.descriptors?.forEach { descriptor in
-            print("(D) \(characteristic.service!.uuid).\(characteristic.uuid).\(descriptor.uuid)")
+            print("(D) \(peripheral.identifier)\t\(peripheral.CC_name)\t\(characteristic.service!.uuid).\(characteristic.uuid).\(descriptor.uuid)")
         }
     }
+}
+
+extension CBPeripheral {
+
+    var CC_name: String { self.name ?? "N/A" }
 }
