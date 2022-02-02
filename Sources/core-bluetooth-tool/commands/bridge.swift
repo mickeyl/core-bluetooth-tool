@@ -18,6 +18,9 @@ struct Bridge: ParsableCommand {
     @Argument(help: "Service UUID")
     private var uuid: String
 
+    @Argument(help: "Device UUID")
+    private var device: String = ""
+
     @Option(name: .shortAndLong, help: "The filename to write the PTY path to.")
     var fileName: String?
 
@@ -26,6 +29,13 @@ struct Bridge: ParsableCommand {
         guard CBUUID.CC_isValid(string: self.uuid) else {
             print("Argument error: '\(self.uuid)' is not a valid Bluetooth UUID. Valid are 16-bit, 32-bit, and 128-bit values.")
             Foundation.exit(-1)
+        }
+
+        if !device.isEmpty {
+            guard device.count == 36, let _ = UUID(uuidString: device) else {
+                print("Argument error: '\(device.count) is not a valid BLE device UUID. Please use the scan subcommand to find device UUIDs.")
+                Foundation.exit(-1)
+            }
         }
 
         streamBridge = self.createBridge()
@@ -81,8 +91,15 @@ private extension Bridge {
 
     func connectBLE() {
         let uuid = CBUUID(string: self.uuid)
-        print("Scanning for a device with service UUID '\(uuid)'…")
-        let url = URL(string: "ble://\(uuid)")!
+        let url: URL
+        if self.device.isEmpty {
+            print("Scanning for devices with service UUID \(uuid)…")
+            url = URL(string: "ble://\(uuid)")!
+        } else {
+            let peer = UUID(uuidString: self.device)!
+            print("Scanning for device \(peer) providing service \(uuid)…")
+            url = URL(string: "ble://\(uuid)/\(peer)")!
+        }
 
         Stream.CC_getStreamPair(to: url) { result in
             guard case .success(let streams) = result else {

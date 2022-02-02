@@ -6,7 +6,7 @@ Bluetooth Low Energy command line tool for macOS.
 
 * Scan BLE devices
 * Establish a serial TTY connection to a BLE device
-* (more planned is planned, but this is v0.1)
+* (more planned is planned, but this is v0.2)
 
 ## Quick Start
 
@@ -27,16 +27,28 @@ brew install core-bluetooth-tool
 
 ### Usage
 
-Scan BLE devices in vincinity:
+Scan all BLE devices in vincinity (**no longer works with macOS Monterey thanks to Apple**):
 
 ```sh
 core-bluetooth-tool scan
 ```
 
-Establish a serial bridge to BLE device providing a serial communication service, e.g., with a UUID of `FFF0`:
+Scan all BLE devices in vincinity providing a certain service, e.g. with a UUID of `FFF0`:
+
+```sh
+core-bluetooth-tool scan fff0
+```
+
+Establish a serial bridge to the first BLE device providing a serial communication service, e.g., with a UUID of `FFF0`:
 
 ```sh
 core-bluetooth-tool bridge fff0
+```
+
+Establish a serial bridge to a concrete BLE device providing a serial communication service, e.g., with a UUID of `FFF0`:
+
+```sh
+core-bluetooth-tool bridge fff0 F890A301-A464-D37C-AAFB-9374B546F7FE
 ```
 
 ## Motivation
@@ -59,7 +71,7 @@ I want to extend this tool in order to handle all the common tasks typically ass
 * scanning and printing characteristics
 * scanning and printing descriptors
 * trigger bonding (by reading from an encrypted characteristic)
-* subscribing to a characteristic and printing the output
+* subscribing to a characteristic and continously printing the output
 * reading and writing to/from a characteristic
 
 It would also be nice to have kind of a `readline`-based REPL, where you directly interact with one device.
