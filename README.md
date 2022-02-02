@@ -6,7 +6,7 @@ Bluetooth Low Energy command line tool for macOS.
 
 * Scan BLE devices
 * Establish a serial TTY connection to a BLE device
-* (more planned is planned, but this is v0.2)
+* (more planned is planned, but this is v0.3)
 
 ## Quick Start
 
