@@ -15,6 +15,13 @@ struct Scan: ParsableCommand {
     private var entity: String?
     
     func loop() {
+
+        signal(SIGINT, SIG_IGN)
+        let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        sigintSrc.setEventHandler {
+            Foundation.exit(0)
+        }
+        sigintSrc.resume()
         let loop = RunLoop.current
         while loop.run(mode: .default, before: Date.distantFuture) {
             loop.run()
