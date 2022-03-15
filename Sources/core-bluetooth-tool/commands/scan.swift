@@ -32,14 +32,15 @@ struct Scan: ParsableCommand {
 
         if self.entity == nil {
             // scan for everything
-            if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 12 {
+            let osVersion = ProcessInfo.processInfo.operatingSystemVersion
+            if osVersion.majorVersion == 12 && osVersion.minorVersion < 3 {
                 print("""
-NOTE: It looks like you're running on macOS Monterey or later. This means, we can no longer scan without
-specifying a concrete service to look for. This is due to a change in Apple's frameworks that treats a command line
-process to be a 'background process', thus the CoreBluetooth background scanning rules (no wildcard scanning) apply.
+NOTE: It looks like you're running on macOS Monterey 12.0, 12.1, or 12.2. These versions were
+treating command line processes like 'background processes', hence the CoreBluetooth background scanning rules
+(no wildcard scanning) applied. This meant that you could not scan for devices without specifying
+a concrete service UUID. Thankfully this has been reverted starting with macOS 12.3.
 
-Apple continues to devalue the operating system command line, which is a very very sad trend.
-Please complain by using their feedback reporter. Not that I think it helps though…
+If you did complain with Apple, thanks a lot for helping!
 
 """)
             }
