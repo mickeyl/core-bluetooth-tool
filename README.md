@@ -25,6 +25,11 @@ brew tap mickeyl/formulae
 brew install core-bluetooth-tool
 ```
 
+### Requirements
+
+Since this application uses Bluetooth, you need to grant Bluetooth access to your favorite terminal emulator before
+running `core-bluetooth-tool`. Otherwise, the application will be halted by the OS.
+
 ### Usage
 
 Scan all BLE devices in vincinity (**no longer works with macOS Monterey thanks to Apple**):
