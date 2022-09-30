@@ -1,0 +1,25 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "CornucopiaStreams",
+        "repositoryURL": "https://github.com/Cornucopia-Swift/CornucopiaStreams",
+        "state": {
+          "branch": "master",
+          "revision": "0c8318f142e18c3f384b11a3d161491ef2765dca",
+          "version": null
+        }
+      },
+      {
+        "package": "swift-argument-parser",
+        "repositoryURL": "https://github.com/apple/swift-argument-parser",
+        "state": {
+          "branch": null,
+          "revision": "9f39744e025c7d377987f30b03770805dcb0bcd1",
+          "version": "1.1.4"
+        }
+      }
+    ]
+  },
+  "version": 1
+}

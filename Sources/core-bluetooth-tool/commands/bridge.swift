@@ -107,15 +107,17 @@ private extension Bridge {
             url = URL(string: "ble://\(uuid)/\(peer)")!
         }
 
-        Stream.CC_getStreamPair(to: url) { result in
-            guard case .success(let streams) = result else {
-                print("Error: Can't build stream: \(result)")
+        Task {
+            do {
+                let streams = try await Cornucopia.Streams.connect(url: url)
+                //let deviceName = streams.0.CC_meta?.name ?? "Unknown"
+                print("Connected to BLE device via \(url).")
+                streamBridge.bleInputStream = streams.0
+                streamBridge.bleOutputStream = streams.1
+            } catch {
+                print("Error: Can't connect to \(url): \(error)")
                 Foundation.exit(-1)
             }
-            let deviceName = streams.0.CC_meta?.name ?? "Unknown"
-            print("Connected to BLE device '\(deviceName)'.")
-            streamBridge.bleInputStream = streams.0
-            streamBridge.bleOutputStream = streams.1
         }
     }
 }

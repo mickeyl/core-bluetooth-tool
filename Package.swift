@@ -11,7 +11,7 @@ let package = Package(
         .executable(name: "core-bluetooth-tool", targets: ["core-bluetooth-tool"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", .upToNextMajor(from: "1.0.2")),
+        .package(url: "https://github.com/apple/swift-argument-parser", .upToNextMajor(from: "1.1.4")),
         .package(url: "https://github.com/Cornucopia-Swift/CornucopiaStreams", .branch("master")),
     ],
     targets: [
