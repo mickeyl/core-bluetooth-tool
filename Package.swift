@@ -12,8 +12,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", .upToNextMajor(from: "1.1.4")),
-        //.package(url: "https://github.com/Cornucopia-Swift/CornucopiaStreams", .branch("master")),
-        .package(path: "../CornucopiaStreams")
+        .package(url: "https://github.com/Cornucopia-Swift/CornucopiaStreams", .branch("master")),
+        //.package(path: "../CornucopiaStreams")
     ],
     targets: [
         .target(
