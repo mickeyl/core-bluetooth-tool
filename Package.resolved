@@ -29,6 +29,15 @@
         }
       },
       {
+        "package": "CornucopiaStreams",
+        "repositoryURL": "https://github.com/Cornucopia-Swift/CornucopiaStreams",
+        "state": {
+          "branch": "master",
+          "revision": "26584502820b6d2e4ada616ea2abd5252811744f",
+          "version": null
+        }
+      },
+      {
         "package": "SWCompression",
         "repositoryURL": "https://github.com/tsolomko/SWCompression",
         "state": {

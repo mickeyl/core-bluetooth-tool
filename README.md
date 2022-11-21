@@ -32,7 +32,7 @@ running `core-bluetooth-tool`. Otherwise, the application will be halted by the 
 
 ### Usage
 
-Scan all BLE devices in vincinity (**no longer works with macOS Monterey thanks to Apple**):
+Scan all BLE devices in vincinity (**broken in macOS Monterey < 12.3, earlier and newer versions OK**):
 
 ```sh
 core-bluetooth-tool scan
