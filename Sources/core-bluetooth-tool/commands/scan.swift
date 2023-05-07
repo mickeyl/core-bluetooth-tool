@@ -3,6 +3,7 @@
 //
 import ArgumentParser
 import Foundation
+import Chalk
 import CoreBluetooth
 
 var scanner = Scanner()
@@ -155,7 +156,7 @@ extension Scanner: CBCentralManagerDelegate {
         let identifier = peripheral.identifier
         guard self.peripherals[identifier] == nil else { return }
         
-        print("(P) \(identifier)\t\(peripheral.CC_name)")
+        print("(P) \(identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)")
         self.peripherals[identifier] = peripheral
 
         if self.peripheralIdentifier == nil {
@@ -181,7 +182,7 @@ extension Scanner: CBPeripheralDelegate {
         }
         peripheral.services?.forEach { service in
             let primary = service.isPrimary ? "PRIMARY" : ""
-            print("(S) \(peripheral.identifier)\t\(peripheral.CC_name)\t\(service.uuid)\t\(primary)")
+            print("(S) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(service.uuid, color: .yellow)\t\(primary)")
 
             peripheral.discoverCharacteristics(nil, for: service)
         }
@@ -230,7 +231,7 @@ extension Scanner: CBPeripheralDelegate {
                 properties.append("Extended")
             }
             let p = properties.joined(separator: ", ")
-            print("(C) \(peripheral.identifier)\t\(peripheral.CC_name)\t\(service.uuid).\(characteristic.uuid)\t\(p)")
+            print("(C) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(service.uuid, color: .yellow).\(characteristic.uuid, color: .cyan)\t\(p)")
             peripheral.discoverDescriptors(for: characteristic)
         }
     }
@@ -241,7 +242,7 @@ extension Scanner: CBPeripheralDelegate {
             return
         }
         characteristic.descriptors?.forEach { descriptor in
-            print("(D) \(peripheral.identifier)\t\(peripheral.CC_name)\t\(characteristic.service!.uuid).\(characteristic.uuid).\(descriptor.uuid)")
+            print("(D) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(characteristic.service!.uuid, color: .yellow).\(characteristic.uuid, color: .cyan).\(descriptor.uuid, color: .red)")
         }
     }
 }
