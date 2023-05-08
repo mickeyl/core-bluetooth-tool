@@ -83,7 +83,7 @@ I want to extend this tool in order to handle all the common tasks typically ass
 It would also be nice to have kind of a `readline`-based REPL, where you directly interact with one device.
 I could even imagine an `ncurses`-alike interface (such as `htop` is presenting) for showing the signal strength of devices in vicinity.
 
-It might also be interesting to evaluate [PureSwift/Bluetooth](https://github.com/PureSwift/Bluetooth) in order to make this tool work
+It might also be interesting to evaluate [PureSwift/BluetoothLinux](https://github.com/PureSwift/BluetoothLinux) in order to make this tool work
 on Linux.
 
 ## Contribution
