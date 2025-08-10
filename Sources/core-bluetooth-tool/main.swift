@@ -10,6 +10,7 @@ struct CoreBluetoothTool: ParsableCommand {
         abstract: "CoreBluetooth command-line tool for scanning and more",
         subcommands: [
             Scan.self,
+            Monitor.self,
             Bridge.self,
         ]
     )

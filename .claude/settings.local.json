@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(swift build)",
+      "Bash(./.build/debug/core-bluetooth-tool:*)"
+    ],
+    "deny": []
+  }
+}
