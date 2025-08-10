@@ -50,23 +50,33 @@ class DeviceEntry {
     var name: String
     var rssi: NSNumber
     var lastSeen: Date
-    var beaconCount: Int
+    var beaconTimestamps: [Date] = []
     var pulsePhase: Int
+    var isConnectable: Bool
     
-    init(identifier: UUID, name: String, rssi: NSNumber) {
+    init(identifier: UUID, name: String, rssi: NSNumber, isConnectable: Bool) {
         self.identifier = identifier
         self.name = name
         self.rssi = rssi
         self.lastSeen = Date()
-        self.beaconCount = 1
+        self.beaconTimestamps = [Date()]
         self.pulsePhase = 0
+        self.isConnectable = isConnectable
     }
     
-    func updateBeacon(rssi: NSNumber) {
+    func updateBeacon(rssi: NSNumber, isConnectable: Bool) {
         self.rssi = rssi
-        self.lastSeen = Date()
-        self.beaconCount += 1
+        let now = Date()
+        self.lastSeen = now
+        self.beaconTimestamps.append(now)
+        
+        // Keep only last 20 timestamps to avoid memory growth
+        if self.beaconTimestamps.count > 20 {
+            self.beaconTimestamps.removeFirst()
+        }
+        
         self.pulsePhase = (self.pulsePhase + 1) % 4
+        self.isConnectable = isConnectable
     }
     
     var signalStrengthIcon: String {
@@ -88,6 +98,10 @@ class DeviceEntry {
         return pulseChars[pulsePhase]
     }
     
+    var connectableIcon: String {
+        return isConnectable ? "🔗" : "🚫"
+    }
+    
     var ageString: String {
         let age = Date().timeIntervalSince(lastSeen)
         if age < 1 {
@@ -96,6 +110,60 @@ class DeviceEntry {
             return "\(Int(age))s"
         } else {
             return "\(Int(age/60))m"
+        }
+    }
+    
+    var beaconInterval: String {
+        let now = Date()
+        let timeSinceLastBeacon = now.timeIntervalSince(lastSeen)
+        
+        guard beaconTimestamps.count >= 2 else {
+            return "---"
+        }
+        
+        // Calculate intervals between consecutive beacons
+        var intervals: [TimeInterval] = []
+        for i in 1..<beaconTimestamps.count {
+            let interval = beaconTimestamps[i].timeIntervalSince(beaconTimestamps[i-1])
+            intervals.append(interval)
+        }
+        
+        guard !intervals.isEmpty else {
+            return "---"
+        }
+        
+        let sortedIntervals = intervals.sorted()
+        let minInterval = sortedIntervals.first!
+        let maxInterval = max(sortedIntervals.last!, timeSinceLastBeacon)
+        
+        // Calculate median (nominal) interval
+        let median: TimeInterval
+        let count = sortedIntervals.count
+        if count % 2 == 0 {
+            median = (sortedIntervals[count/2 - 1] + sortedIntervals[count/2]) / 2.0
+        } else {
+            median = sortedIntervals[count/2]
+        }
+        
+        let nominalInterval = max(median, timeSinceLastBeacon)
+        
+        return "\(formatInterval(minInterval))<\(formatInterval(nominalInterval))<\(formatInterval(maxInterval))"
+    }
+    
+    private func formatInterval(_ interval: TimeInterval) -> String {
+        if interval >= 10.0 {
+            return "\(Int(interval))s"
+        } else if interval >= 1.0 {
+            return String(format: "%.1fs", interval)
+        } else {
+            let ms = interval * 1000
+            if ms < 1.0 {
+                return "<1ms"
+            } else if ms < 10.0 {
+                return String(format: "%.0fms", ms)
+            } else {
+                return "\(Int(ms))ms"
+            }
         }
     }
 }
@@ -128,7 +196,12 @@ class DeviceMonitor: NSObject {
     }
     
     private func updateDisplay() {
-        let sortedDevices = devices.values.sorted { $0.rssi.intValue > $1.rssi.intValue }
+        let sortedDevices = devices.values.sorted { device1, device2 in
+            if device1.isConnectable != device2.isConnectable {
+                return device1.isConnectable && !device2.isConnectable
+            }
+            return device1.rssi.intValue > device2.rssi.intValue
+        }
         
         if !isFirstDisplay {
             print("\u{001B}[H")
@@ -143,26 +216,26 @@ class DeviceMonitor: NSObject {
         }
         
         print("\u{001B}[2K", terminator: "")
-        print("══════════════════════════════════════════════════════════════════════════════════════════════════")
+        print("════════════════════════════════════════════════════════════════════════════════════════════")
         
         print("\u{001B}[2K", terminator: "")
-        print("Signal │ Pulse │ Device ID                              │ Name             │ RSSI │ Beacons │ Last")
+        print("Signal │ Pulse │ Conn │ Device ID │ Name                     │ RSSI │ Interval Range  │ Last")
         
         print("\u{001B}[2K", terminator: "")
-        print("───────┼───────┼────────────────────────────────────────┼──────────────────┼──────┼─────────┼─────")
+        print("───────┼───────┼──────┼───────────┼──────────────────────────┼──────┼─────────────────┼─────")
         
         for device in sortedDevices.prefix(maxDevices) {
             print("\u{001B}[2K", terminator: "")
-            let deviceIdFull = device.identifier.uuidString.padding(toLength: 36, withPad: " ", startingAt: 0)
-            let deviceName = String(device.name.prefix(16)).padding(toLength: 16, withPad: " ", startingAt: 0)
+            let deviceIdShort = String(device.identifier.uuidString.prefix(8)).padding(toLength: 8, withPad: " ", startingAt: 0)
+            let deviceName = String(device.name.prefix(24)).padding(toLength: 24, withPad: " ", startingAt: 0)
             let rssiStr = String(device.rssi.intValue).padding(toLength: 4, withPad: " ", startingAt: 0)
-            let beaconStr = String(device.beaconCount).padding(toLength: 7, withPad: " ", startingAt: 0)
+            let intervalStr = device.beaconInterval.padding(toLength: 15, withPad: " ", startingAt: 0)
             let ageStr = device.ageString.padding(toLength: 4, withPad: " ", startingAt: 0)
             
-            print("  \(device.signalStrengthIcon)   │   \(device.pulseIcon)  │ \(deviceIdFull, color: .magenta)   │ \(deviceName, color: .blue) │ \(rssiStr, color: getRSSIColor(device.rssi.intValue)) │ \(beaconStr) │ \(ageStr)")
+            print("  \(device.signalStrengthIcon)   │   \(device.pulseIcon)  │  \(device.connectableIcon)  │ \(deviceIdShort, color: .magenta)  │ \(deviceName, color: .blue) │ \(rssiStr, color: getRSSIColor(device.rssi.intValue)) │ \(intervalStr) │ \(ageStr)")
         }
         print("\u{001B}[2K", terminator: "")
-        print("───────┴───────┴────────────────────────────────────────┴──────────────────┴──────┴─────────┴─────")
+        print("───────┴───────┴──────┴───────────┴──────────────────────────┴──────┴─────────────────┴─────")
         
         print("\u{001B}[2K", terminator: "")
         let notShownCount = max(0, devices.count - maxDevices)
@@ -217,14 +290,15 @@ extension DeviceMonitor: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         let identifier = peripheral.identifier
         let name = peripheral.name ?? "Unknown"
+        let isConnectable = advertisementData[CBAdvertisementDataIsConnectable] as? Bool ?? false
         
         if let existingDevice = devices[identifier] {
-            existingDevice.updateBeacon(rssi: RSSI)
+            existingDevice.updateBeacon(rssi: RSSI, isConnectable: isConnectable)
             if existingDevice.name == "Unknown" && name != "Unknown" {
                 existingDevice.name = name
             }
         } else {
-            devices[identifier] = DeviceEntry(identifier: identifier, name: name, rssi: RSSI)
+            devices[identifier] = DeviceEntry(identifier: identifier, name: name, rssi: RSSI, isConnectable: isConnectable)
         }
     }
 }
