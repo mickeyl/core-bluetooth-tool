@@ -53,8 +53,9 @@ class DeviceEntry {
     var beaconTimestamps: [Date] = []
     var pulsePhase: Int
     var isConnectable: Bool
+    var primaryService: String?
     
-    init(identifier: UUID, name: String, rssi: NSNumber, isConnectable: Bool) {
+    init(identifier: UUID, name: String, rssi: NSNumber, isConnectable: Bool, primaryService: String? = nil) {
         self.identifier = identifier
         self.name = name
         self.rssi = rssi
@@ -62,9 +63,10 @@ class DeviceEntry {
         self.beaconTimestamps = [Date()]
         self.pulsePhase = 0
         self.isConnectable = isConnectable
+        self.primaryService = primaryService
     }
     
-    func updateBeacon(rssi: NSNumber, isConnectable: Bool) {
+    func updateBeacon(rssi: NSNumber, isConnectable: Bool, primaryService: String? = nil) {
         self.rssi = rssi
         let now = Date()
         self.lastSeen = now
@@ -77,25 +79,35 @@ class DeviceEntry {
         
         self.pulsePhase = (self.pulsePhase + 1) % 4
         self.isConnectable = isConnectable
+        if let service = primaryService {
+            self.primaryService = service
+        }
     }
     
     var signalStrengthIcon: String {
         let rssiValue = rssi.intValue
         switch rssiValue {
-        case -40...0:
-            return "📶"
-        case -60...(-41):
-            return "📶"
-        case -80...(-61):
-            return "📱"
+        case -50...0:
+            return "🟢"
+        case -70...(-51):
+            return "🟡"
+        case -85...(-71):
+            return "🟠"
         default:
-            return "📵"
+            return "🔴"
         }
     }
     
-    var pulseIcon: String {
-        let pulseChars = ["⚫", "🔴", "🟠", "🟡"]
-        return pulseChars[pulsePhase]
+    var primaryServiceDisplay: String {
+        guard let service = primaryService else { return "---" }
+        // Display short form of UUID (4 or 8 chars)
+        if service.count == 4 {
+            return service.uppercased()
+        } else if service.count >= 8 {
+            return String(service.prefix(8)).uppercased()
+        } else {
+            return service.uppercased()
+        }
     }
     
     var connectableIcon: String {
@@ -216,13 +228,13 @@ class DeviceMonitor: NSObject {
         }
         
         print("\u{001B}[2K", terminator: "")
-        print("════════════════════════════════════════════════════════════════════════════════════════════")
+        print("══════════════════════════════════════════════════════════════════════════════════════════════")
         
         print("\u{001B}[2K", terminator: "")
-        print("Signal │ Pulse │ Conn │ Device ID │ Name                     │ RSSI │ Interval Range  │ Last")
+        print("Signal │ Service │ Conn │ Device ID │ Name                     │ RSSI │ Interval Range  │ Last")
         
         print("\u{001B}[2K", terminator: "")
-        print("───────┼───────┼──────┼───────────┼──────────────────────────┼──────┼─────────────────┼─────")
+        print("───────┼─────────┼──────┼───────────┼──────────────────────────┼──────┼─────────────────┼─────")
         
         for device in sortedDevices.prefix(maxDevices) {
             print("\u{001B}[2K", terminator: "")
@@ -232,10 +244,10 @@ class DeviceMonitor: NSObject {
             let intervalStr = device.beaconInterval.padding(toLength: 15, withPad: " ", startingAt: 0)
             let ageStr = device.ageString.padding(toLength: 4, withPad: " ", startingAt: 0)
             
-            print("  \(device.signalStrengthIcon)   │   \(device.pulseIcon)  │  \(device.connectableIcon)  │ \(deviceIdShort, color: .magenta)  │ \(deviceName, color: .blue) │ \(rssiStr, color: getRSSIColor(device.rssi.intValue)) │ \(intervalStr) │ \(ageStr)")
+            print("  \(device.signalStrengthIcon)   │ \(device.primaryServiceDisplay.padding(toLength: 7, withPad: " ", startingAt: 0), color: .yellow) │  \(device.connectableIcon)  │ \(deviceIdShort, color: .magenta)  │ \(deviceName, color: .blue) │ \(rssiStr, color: getRSSIColor(device.rssi.intValue)) │ \(intervalStr) │ \(ageStr)")
         }
         print("\u{001B}[2K", terminator: "")
-        print("───────┴───────┴──────┴───────────┴──────────────────────────┴──────┴─────────────────┴─────")
+        print("───────┴─────────┴──────┴───────────┴──────────────────────────┴──────┴─────────────────┴─────")
         
         print("\u{001B}[2K", terminator: "")
         let notShownCount = max(0, devices.count - maxDevices)
@@ -250,14 +262,14 @@ class DeviceMonitor: NSObject {
     
     private func getRSSIColor(_ rssi: Int) -> Chalk.Color {
         switch rssi {
-        case -40...0:
+        case -50...0:
             return .green
-        case -60...(-41):
+        case -70...(-51):
             return .yellow
-        case -80...(-61):
+        case -85...(-71):
             return .red
         default:
-            return .white
+            return .magenta  // More readable than white for very weak signals
         }
     }
 }
@@ -292,13 +304,32 @@ extension DeviceMonitor: CBCentralManagerDelegate {
         let name = peripheral.name ?? "Unknown"
         let isConnectable = advertisementData[CBAdvertisementDataIsConnectable] as? Bool ?? false
         
+        // Extract primary service from advertising data
+        let primaryService = extractPrimaryService(from: advertisementData)
+        
         if let existingDevice = devices[identifier] {
-            existingDevice.updateBeacon(rssi: RSSI, isConnectable: isConnectable)
+            existingDevice.updateBeacon(rssi: RSSI, isConnectable: isConnectable, primaryService: primaryService)
             if existingDevice.name == "Unknown" && name != "Unknown" {
                 existingDevice.name = name
             }
         } else {
-            devices[identifier] = DeviceEntry(identifier: identifier, name: name, rssi: RSSI, isConnectable: isConnectable)
+            devices[identifier] = DeviceEntry(identifier: identifier, name: name, rssi: RSSI, isConnectable: isConnectable, primaryService: primaryService)
         }
+    }
+    
+    private func extractPrimaryService(from advertisementData: [String: Any]) -> String? {
+        // Try to get service UUIDs from advertisement data
+        if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID], 
+           let firstService = serviceUUIDs.first {
+            return firstService.uuidString
+        }
+        
+        // Check for overflow service UUIDs (truncated list)
+        if let overflowUUIDs = advertisementData[CBAdvertisementDataOverflowServiceUUIDsKey] as? [CBUUID],
+           let firstService = overflowUUIDs.first {
+            return firstService.uuidString
+        }
+        
+        return nil
     }
 }
