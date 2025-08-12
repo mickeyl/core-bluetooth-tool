@@ -8,6 +8,24 @@ import CoreBluetooth
 
 var deviceMonitor = DeviceMonitor()
 
+enum SortColumn: String, CaseIterable, ExpressibleByArgument {
+    case signal = "signal"
+    case name = "name"
+    case service = "service"
+    case age = "age"
+    case interval = "interval"
+    
+    var description: String {
+        switch self {
+        case .signal: return "Signal strength (RSSI)"
+        case .name: return "Device name"
+        case .service: return "Primary service"
+        case .age: return "Last seen"
+        case .interval: return "Beacon interval"
+        }
+    }
+}
+
 struct Monitor: ParsableCommand {
     
     public static let configuration = CommandConfiguration(abstract: "Monitor BLE devices in a live table view")
@@ -17,6 +35,9 @@ struct Monitor: ParsableCommand {
     
     @Option(name: .shortAndLong, help: "Maximum number of devices to display (default: 30)")
     private var maxDevices: Int = 30
+    
+    @Option(name: .shortAndLong, help: "Sort column: signal, name, service, age, interval (default: signal)")
+    private var sortBy: SortColumn = .signal
     
     func run() throws {
         if let uuid = serviceUUID {
@@ -28,6 +49,7 @@ struct Monitor: ParsableCommand {
         }
         
         deviceMonitor.maxDevices = maxDevices
+        deviceMonitor.sortColumn = sortBy
         deviceMonitor.startMonitoring()
         
         signal(SIGINT, SIG_IGN)
@@ -188,6 +210,7 @@ class DeviceMonitor: NSObject {
     private var isFirstDisplay = true
     var serviceFilter: CBUUID?
     var maxDevices: Int = 30
+    var sortColumn: SortColumn = .signal
     
     func startMonitoring() {
         self.manager = CBCentralManager()
@@ -209,10 +232,27 @@ class DeviceMonitor: NSObject {
     
     private func updateDisplay() {
         let sortedDevices = devices.values.sorted { device1, device2 in
+            // First, keep connectable and non-connectable devices separate
             if device1.isConnectable != device2.isConnectable {
                 return device1.isConnectable && !device2.isConnectable
             }
-            return device1.rssi.intValue > device2.rssi.intValue
+            
+            // Then sort by the selected column within each group
+            switch sortColumn {
+            case .signal:
+                return device1.rssi.intValue > device2.rssi.intValue
+            case .name:
+                return device1.name.localizedCaseInsensitiveCompare(device2.name) == .orderedAscending
+            case .service:
+                let service1 = device1.primaryService ?? ""
+                let service2 = device2.primaryService ?? ""
+                return service1.localizedCaseInsensitiveCompare(service2) == .orderedAscending
+            case .age:
+                return device1.lastSeen > device2.lastSeen // More recent first
+            case .interval:
+                // Sort by beacon interval - this is more complex as we need to compare interval strings
+                return compareIntervals(device1.beaconInterval, device2.beaconInterval)
+            }
         }
         
         if !isFirstDisplay {
@@ -271,6 +311,28 @@ class DeviceMonitor: NSObject {
         default:
             return .magenta  // More readable than white for very weak signals
         }
+    }
+    
+    private func compareIntervals(_ interval1: String, _ interval2: String) -> Bool {
+        // Helper function to extract nominal interval from interval string
+        func extractNominalInterval(_ intervalStr: String) -> Double {
+            let parts = intervalStr.components(separatedBy: "<")
+            guard parts.count >= 2 else { return Double.infinity }
+            
+            let nominalPart = parts[1]
+            if nominalPart.contains("ms") {
+                let value = nominalPart.replacingOccurrences(of: "ms", with: "")
+                return (Double(value) ?? 0) / 1000.0
+            } else if nominalPart.contains("s") {
+                let value = nominalPart.replacingOccurrences(of: "s", with: "")
+                return Double(value) ?? 0
+            }
+            return Double.infinity
+        }
+        
+        let nominal1 = extractNominalInterval(interval1)
+        let nominal2 = extractNominalInterval(interval2)
+        return nominal1 < nominal2 // Shorter intervals first
     }
 }
 

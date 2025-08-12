@@ -6,7 +6,8 @@ Bluetooth Low Energy command line tool for macOS.
 
 * Scan BLE devices
 * Establish a serial TTY connection to a BLE device
-* (more planned is planned, but this is v0.3)
+* Monitor BLE devices in a live table view with customizable sorting
+* (more planned, but this is v0.3)
 
 ## Quick Start
 
@@ -55,6 +56,21 @@ Establish a serial bridge to a concrete BLE device providing a serial communicat
 ```sh
 core-bluetooth-tool bridge fff0 F890A301-A464-D37C-AAFB-9374B546F7FE
 ```
+
+Monitor BLE devices in a live updating table view:
+
+```sh
+core-bluetooth-tool monitor
+```
+
+Monitor with custom sorting (available options: `signal`, `name`, `service`, `age`, `interval`):
+
+```sh
+core-bluetooth-tool monitor --sort-by name
+core-bluetooth-tool monitor -s interval
+```
+
+**Note on sorting by interval**: Sorting by beacon interval provides a particularly stable display since BLE devices advertise with fixed, predictable intervals that are part of their design specification. Unlike signal strength which fluctuates due to environmental factors, advertising intervals remain constant and create natural groupings of devices with similar timing characteristics.
 
 ## Motivation
 
