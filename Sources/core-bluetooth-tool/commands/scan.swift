@@ -5,6 +5,9 @@ import ArgumentParser
 import Foundation
 import Chalk
 import CoreBluetooth
+import CornucopiaCore
+
+let logger = Cornucopia.Core.Logger(subsystem: "core-bluetooth-tool", category: "scan")
 
 var scanner = Scanner()
 
@@ -12,7 +15,13 @@ struct Scan: ParsableCommand {
     
     public static let configuration = CommandConfiguration(abstract: "Scan BLE devices")
     
-    @Argument(help: "Specify an entity to scan for, either service, service.characteristic, or service.characteristic.descriptor. If you're running macOS Catalina or older, there's also support for scanning by device, device.service, device.service.characteristic, and device.service.characteristic.descriptor")
+    @Argument(help: ArgumentHelp("Target to scan", discussion: """
+Provide a dot-separated path that uses real BLE UUIDs:
+- `<serviceUUID>` optionally followed by `.characteristicUUID` and `.descriptorUUID`
+- `device.<peripheralUUID>` optionally followed by `.serviceUUID`, `.characteristicUUID`, and `.descriptorUUID`
+
+UUID components may be 16-bit, 32-bit, or 128-bit hexadecimal identifiers.
+"""))
     private var entity: String?
     
     func loop() {
@@ -50,27 +59,130 @@ If you did complain with Apple, thanks a lot for helping!
             return
         }
         
-        let components = entity!.components(separatedBy: ".")
-        switch components.count {
-            case 1:
-                let a = components[0]
-                switch a.count {
-                    case 4: scanner.command = .scanService(CBUUID(string: a))
-                    case 36: scanner.command = .scanPeripheral(UUID(uuidString: a)!)
-                    default:
-                        print("Argument error: \(a) is not a valid peripheral or service ID")
-                        Foundation.exit(-1)
-                }
-            case 2:
-                fallthrough
-            case 3:
-                fallthrough
-            default:
-                fatalError("???")
+        var components = entity!.components(separatedBy: ".").filter { !$0.isEmpty }
+        if components.isEmpty {
+            print("Argument error: entity must not contain empty components.")
+            Foundation.exit(-1)
+        }
+
+        if components.first?.lowercased() == "device" {
+            components.removeFirst()
+            self.configureDeviceScan(with: components)
+        } else {
+            self.configureServiceScan(with: components)
         }
 
         scanner.scan()
         self.loop()
+    }
+}
+
+private extension Scan {
+
+    func configureServiceScan(with components: [String]) {
+
+        switch components.count {
+            case 1:
+                let service = components[0]
+                guard CBUUID.CC_isValid(string: service) else {
+                    print("Argument error: \(service) is not a valid service UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                scanner.command = .scanService(CBUUID(string: service))
+
+            case 2:
+                let service = components[0]
+                let characteristic = components[1]
+                guard CBUUID.CC_isValid(string: service) else {
+                    print("Argument error: \(service) is not a valid service UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                guard CBUUID.CC_isValid(string: characteristic) else {
+                    print("Argument error: \(characteristic) is not a valid characteristic UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                scanner.command = .scanServiceCharacteristic(CBUUID(string: service), CBUUID(string: characteristic))
+
+            case 3:
+                let service = components[0]
+                let characteristic = components[1]
+                let descriptor = components[2]
+                guard CBUUID.CC_isValid(string: service) else {
+                    print("Argument error: \(service) is not a valid service UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                guard CBUUID.CC_isValid(string: characteristic) else {
+                    print("Argument error: \(characteristic) is not a valid characteristic UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                guard CBUUID.CC_isValid(string: descriptor) else {
+                    print("Argument error: \(descriptor) is not a valid descriptor UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                scanner.command = .scanServiceCharacteristicDescriptor(CBUUID(string: service), CBUUID(string: characteristic), CBUUID(string: descriptor))
+
+            default:
+                print("Argument error: Unsupported number of service components (expected up to 3, got \(components.count)). Use <serviceUUID>[.<characteristicUUID>[.<descriptorUUID>]].")
+                Foundation.exit(-1)
+        }
+    }
+
+    func configureDeviceScan(with components: [String]) {
+
+        guard !components.isEmpty else {
+            print("Argument error: device scan requires at least the device UUID.")
+            Foundation.exit(-1)
+        }
+
+        let device = components[0]
+        guard let deviceUUID = UUID(uuidString: device) else {
+            print("Argument error: \(device) is not a valid BLE device UUID.")
+            Foundation.exit(-1)
+        }
+
+        switch components.count {
+            case 1:
+                scanner.command = .scanPeripheral(deviceUUID)
+            case 2:
+                let service = components[1]
+                guard CBUUID.CC_isValid(string: service) else {
+                    print("Argument error: \(service) is not a valid service UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                scanner.command = .scanPeripheralService(deviceUUID, CBUUID(string: service))
+            case 3:
+                let service = components[1]
+                let characteristic = components[2]
+                guard CBUUID.CC_isValid(string: service) else {
+                    print("Argument error: \(service) is not a valid service UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                guard CBUUID.CC_isValid(string: characteristic) else {
+                    print("Argument error: \(characteristic) is not a valid characteristic UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                scanner.command = .scanPeripheralServiceCharacteristic(deviceUUID, CBUUID(string: service), CBUUID(string: characteristic))
+            case 4:
+                let service = components[1]
+                let characteristic = components[2]
+                let descriptor = components[3]
+                guard CBUUID.CC_isValid(string: service) else {
+                    print("Argument error: \(service) is not a valid service UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                guard CBUUID.CC_isValid(string: characteristic) else {
+                    print("Argument error: \(characteristic) is not a valid characteristic UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                guard CBUUID.CC_isValid(string: descriptor) else {
+                    print("Argument error: \(descriptor) is not a valid descriptor UUID (must be 16-bit, 32-bit, or 128-bit).")
+                    Foundation.exit(-1)
+                }
+                scanner.command = .scanPeripheralServiceCharacteristicDescriptor(deviceUUID, CBUUID(string: service), CBUUID(string: characteristic), CBUUID(string: descriptor))
+            default:
+                print("Argument error: Unsupported number of device components (expected up to 4, got \(components.count)). Use device.<peripheralUUID>[.<serviceUUID>[.<characteristicUUID>[.<descriptorUUID>]]].")
+                Foundation.exit(-1)
+        }
     }
 }
 
@@ -82,13 +194,14 @@ class Scanner: NSObject {
         case scanServiceCharacteristic(CBUUID, CBUUID)
         case scanServiceCharacteristicDescriptor(CBUUID, CBUUID, CBUUID)
         case scanPeripheral(UUID)
-        case scanPeripheralService(CBUUID, CBUUID)
-        case scanPeripheralServiceCharacteristic(CBUUID, CBUUID, CBUUID)
-        case scanPeripheralServiceCharacteristicDescriptor(CBUUID, CBUUID, CBUUID, CBUUID)
+        case scanPeripheralService(UUID, CBUUID)
+        case scanPeripheralServiceCharacteristic(UUID, CBUUID, CBUUID)
+        case scanPeripheralServiceCharacteristicDescriptor(UUID, CBUUID, CBUUID, CBUUID)
     }
-    
+
     let queue = DispatchQueue(label: "CoreBluetoothQ")
-    var services: [CBUUID] = []
+    var services: [CBUUID]? = nil
+    var requestedServiceIdentifier: CBUUID?
     var characteristicIdentifier: CBUUID?
     var descriptorIdentifier: CBUUID?
     var peripheralIdentifier: UUID?
@@ -99,15 +212,54 @@ class Scanner: NSObject {
             print("Command \(self.command)")
             #endif
             switch self.command {
+                case .scanAll:
+                    self.services = nil
+                    self.requestedServiceIdentifier = nil
+                    self.characteristicIdentifier = nil
+                    self.descriptorIdentifier = nil
+                    self.peripheralIdentifier = nil
                 case let .scanService(uuid):
                     self.services = [uuid]
-                case let .scanServiceCharacteristic(suuid, cuuid):
-                    self.services = [suuid]
-                    self.characteristicIdentifier = cuuid
-                case let .scanPeripheral(uuid):
-                    self.peripheralIdentifier = uuid
-                default:
-                    fatalError("not yet implemented")
+                    self.requestedServiceIdentifier = uuid
+                    self.characteristicIdentifier = nil
+                    self.descriptorIdentifier = nil
+                    self.peripheralIdentifier = nil
+                case let .scanServiceCharacteristic(serviceUUID, characteristicUUID):
+                    self.services = [serviceUUID]
+                    self.requestedServiceIdentifier = serviceUUID
+                    self.characteristicIdentifier = characteristicUUID
+                    self.descriptorIdentifier = nil
+                    self.peripheralIdentifier = nil
+                case let .scanServiceCharacteristicDescriptor(serviceUUID, characteristicUUID, descriptorUUID):
+                    self.services = [serviceUUID]
+                    self.requestedServiceIdentifier = serviceUUID
+                    self.characteristicIdentifier = characteristicUUID
+                    self.descriptorIdentifier = descriptorUUID
+                    self.peripheralIdentifier = nil
+                case let .scanPeripheral(peripheralUUID):
+                    self.peripheralIdentifier = peripheralUUID
+                    self.services = nil
+                    self.requestedServiceIdentifier = nil
+                    self.characteristicIdentifier = nil
+                    self.descriptorIdentifier = nil
+                case let .scanPeripheralService(peripheralUUID, serviceUUID):
+                    self.peripheralIdentifier = peripheralUUID
+                    self.services = nil
+                    self.requestedServiceIdentifier = serviceUUID
+                    self.characteristicIdentifier = nil
+                    self.descriptorIdentifier = nil
+                case let .scanPeripheralServiceCharacteristic(peripheralUUID, serviceUUID, characteristicUUID):
+                    self.peripheralIdentifier = peripheralUUID
+                    self.services = nil
+                    self.requestedServiceIdentifier = serviceUUID
+                    self.characteristicIdentifier = characteristicUUID
+                    self.descriptorIdentifier = nil
+                case let .scanPeripheralServiceCharacteristicDescriptor(peripheralUUID, serviceUUID, characteristicUUID, descriptorUUID):
+                    self.peripheralIdentifier = peripheralUUID
+                    self.services = nil
+                    self.requestedServiceIdentifier = serviceUUID
+                    self.characteristicIdentifier = characteristicUUID
+                    self.descriptorIdentifier = descriptorUUID
             }
         }
     }
@@ -140,9 +292,19 @@ extension Scanner: CBCentralManagerDelegate {
                 print("Error: Bluetooth not powered on. Please power on Bluetooth and try again.")
                 Foundation.exit(-1)
             case .poweredOn:
-                print("BLE powered on, scanning for \(self.services)...")
-                let peripherals = central.retrieveConnectedPeripherals(withServices: self.services)
-                peripherals.forEach { self.centralManager(central, didDiscover: $0, advertisementData: [:], rssi: 42.0) }
+                let scanDescription: String
+                if let peripheralIdentifier = self.peripheralIdentifier {
+                    scanDescription = "device \(peripheralIdentifier.uuidString)"
+                } else if let services = self.services, !services.isEmpty {
+                    scanDescription = services.map { $0.uuidString }.joined(separator: ", ")
+                } else {
+                    scanDescription = "all services"
+                }
+                print("BLE powered on, scanning for \(scanDescription)...")
+                if let services = self.services {
+                    let peripherals = central.retrieveConnectedPeripherals(withServices: services)
+                    peripherals.forEach { self.centralManager(central, didDiscover: $0, advertisementData: [:], rssi: 42.0) }
+                }
                 central.scanForPeripherals(withServices: self.services, options: nil)
             @unknown default:
                 break
@@ -150,10 +312,13 @@ extension Scanner: CBCentralManagerDelegate {
     }
 
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        #if DEBUG
-        print("Discovered: \(peripheral)")
-        #endif
+        logger.trace("Discovered: \(peripheral)")
         let identifier = peripheral.identifier
+
+        if let expected = self.peripheralIdentifier, expected != identifier {
+            return
+        }
+
         guard self.peripherals[identifier] == nil else { return }
         
         print("(P) \(identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)")
@@ -161,7 +326,7 @@ extension Scanner: CBCentralManagerDelegate {
 
         if self.peripheralIdentifier == nil {
             central.connect(peripheral, options: nil)
-        } else if identifier == self.peripheralIdentifier {
+        } else {
             print("Connecting to \(identifier)...")
             central.connect(peripheral, options: nil)
         }
@@ -169,7 +334,8 @@ extension Scanner: CBCentralManagerDelegate {
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         peripheral.delegate = self
-        peripheral.discoverServices(nil)
+        let servicesToDiscover = self.requestedServiceIdentifier.map { [$0] }
+        peripheral.discoverServices(servicesToDiscover)
     }
 }
 
@@ -184,7 +350,8 @@ extension Scanner: CBPeripheralDelegate {
             let primary = service.isPrimary ? "PRIMARY" : ""
             print("(S) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(service.uuid, color: .yellow)\t\(primary)")
 
-            peripheral.discoverCharacteristics(nil, for: service)
+            let characteristicsToDiscover = self.characteristicIdentifier.map { [$0] }
+            peripheral.discoverCharacteristics(characteristicsToDiscover, for: service)
         }
     }
 

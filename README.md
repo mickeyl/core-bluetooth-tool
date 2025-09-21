@@ -39,6 +39,15 @@ Scan all BLE devices in vicinity (**broken in macOS Monterey < 12.3, earlier and
 core-bluetooth-tool scan
 ```
 
+The optional argument to `scan` is a dot-separated path made of real BLE UUIDs:
+
+```
+<serviceUUID>[.<characteristicUUID>[.<descriptorUUID>]]
+device.<peripheralUUID>[.<serviceUUID>[.<characteristicUUID>[.<descriptorUUID>]]]
+```
+
+All UUID components may be supplied as 16-bit, 32-bit, or 128-bit hexadecimal identifiers.
+
 Scan all BLE devices in vicinity providing a certain service, e.g. with a UUID of `FFF0`:
 
 ```sh
