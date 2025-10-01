@@ -12,6 +12,7 @@ struct CoreBluetoothTool: ParsableCommand {
             Scan.self,
             Monitor.self,
             Bridge.self,
+            Autobridge.self,
         ]
     )
     
