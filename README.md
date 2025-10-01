@@ -7,7 +7,8 @@ Bluetooth Low Energy command line tool for macOS.
 * Scan BLE devices
 * Establish a serial TTY connection to a BLE device
 * Monitor BLE devices in a live table view with customizable sorting
-* (more planned, but this is v0.3)
+* Interactively communicate with BLE devices directly from your terminal
+* (more planned, but this is v0.4)
 
 ## Quick Start
 
@@ -66,6 +67,20 @@ Establish a serial bridge to a concrete BLE device providing a serial communicat
 core-bluetooth-tool bridge fff0 F890A301-A464-D37C-AAFB-9374B546F7FE
 ```
 
+Interactively communicate with a BLE device (like `bridge`, but connects your terminal directly for immediate I/O):
+
+```sh
+core-bluetooth-tool autobridge fff0
+```
+
+Or with a specific device:
+
+```sh
+core-bluetooth-tool autobridge fff0 F890A301-A464-D37C-AAFB-9374B546F7FE
+```
+
+The `autobridge` command sets your terminal to raw mode and provides character-by-character bidirectional communication. Press Ctrl-C to exit and restore your terminal.
+
 Monitor BLE devices in a live updating table view:
 
 ```sh
@@ -105,8 +120,14 @@ I want to extend this tool in order to handle all the common tasks typically ass
 * subscribing to a characteristic and continously printing the output
 * reading and writing to/from a characteristic
 
-It would also be nice to have kind of a `readline`-based REPL, where you directly interact with one device.
-I could even imagine an `ncurses`-alike interface (such as `htop` is presenting) for showing the signal strength of devices in vicinity.
+### Planned: Text UI for Autobridge
+A full-featured text-based user interface (TUI) is planned for the `autobridge` command to provide enhanced visualization of BLE communication. This would include:
+* Scrollable communication history
+* Split-pane views showing connection status and device information
+* Interactive device selection
+* Real-time statistics and signal strength visualization
+
+This would build upon the current raw terminal mode to create an `ncurses`-alike interface similar to tools like `htop`.
 
 It might also be interesting to evaluate [PureSwift/BluetoothLinux](https://github.com/PureSwift/BluetoothLinux) in order to make this tool work
 on Linux.
