@@ -1,5 +1,10 @@
 import Foundation
 import Testing
+import CornucopiaCore
+import Darwin
+
+private let scanTimeoutSeconds: TimeInterval = 5
+private let executionTimeoutSeconds: TimeInterval = scanTimeoutSeconds + 1
 
 private enum ScanTestError: Error {
     case binaryNotFound
@@ -28,9 +33,9 @@ private struct ScanTestConfiguration {
             return .seconds(value)
         }
 
-        baselineDuration = duration(for: "CBT_SCAN_BASELINE_SECONDS", defaultSeconds: 20)
-        scanDuration = duration(for: "CBT_SCAN_DURATION_SECONDS", defaultSeconds: 12)
-        extendedScanDuration = duration(for: "CBT_SCAN_EXTENDED_DURATION_SECONDS", defaultSeconds: 14)
+        baselineDuration = duration(for: "CBT_SCAN_BASELINE_SECONDS", defaultSeconds: scanTimeoutSeconds)
+        scanDuration = duration(for: "CBT_SCAN_DURATION_SECONDS", defaultSeconds: scanTimeoutSeconds)
+        extendedScanDuration = duration(for: "CBT_SCAN_EXTENDED_DURATION_SECONDS", defaultSeconds: scanTimeoutSeconds)
     }
 }
 
@@ -49,14 +54,22 @@ private actor ScanScenario {
             return cachedBaseline
         }
         let baselineDuration = duration ?? configuration.baselineDuration
-        let result = try await run(arguments: [], duration: baselineDuration)
+        let result = try await CC_asyncWithTimeout(seconds: executionTimeoutSeconds) {
+            try await self.run(arguments: [], duration: baselineDuration)
+        }
         cachedBaseline = result
         return result
     }
 
     func run(arguments: [String], duration: Duration? = nil) async throws -> ScanResult {
         let scanDuration = duration ?? configuration.scanDuration
-        return try await execute(arguments: arguments, duration: scanDuration)
+        return try await CC_asyncWithTimeout(seconds: executionTimeoutSeconds) {
+            try await self.execute(arguments: arguments, duration: scanDuration)
+        }
+    }
+
+    func resetBaselineCache() {
+        cachedBaseline = nil
     }
 
     private func execute(arguments: [String], duration: Duration) async throws -> ScanResult {
@@ -71,8 +84,29 @@ private actor ScanScenario {
         try await Task.sleep(for: duration)
         if process.isRunning {
             process.interrupt()
+            try? await Task.sleep(for: .milliseconds(100))
         }
-        process.waitUntilExit()
+        if process.isRunning {
+            process.terminate()
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
+
+        // Wait asynchronously for process to exit instead of blocking
+        for _ in 0..<50 {
+            if !process.isRunning {
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+
+        // Force kill if still running after 5 seconds
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+            try? await Task.sleep(for: .milliseconds(100))
+        }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         pipe.fileHandleForReading.closeFile()
@@ -126,6 +160,127 @@ private actor ScanScenario {
         }
         return nil
     }
+}
+
+private var cachedPeripheral: ScanSnapshot.Peripheral?
+private var cachedServicePath: (peripheral: ScanSnapshot.Peripheral, service: ScanSnapshot.Peripheral.Service)?
+private var cachedCharacteristicPath: (peripheral: ScanSnapshot.Peripheral, service: ScanSnapshot.Peripheral.Service, characteristic: ScanSnapshot.Peripheral.Service.Characteristic)?
+private var cachedDescriptorPath: (peripheral: ScanSnapshot.Peripheral, service: ScanSnapshot.Peripheral.Service, characteristic: ScanSnapshot.Peripheral.Service.Characteristic, descriptor: String)?
+
+private func runWithRetries(arguments: [String], duration: Duration? = nil, attempts: Int = 3) async throws -> ScanResult? {
+    for _ in 0..<attempts {
+        do {
+            return try await scenario.run(arguments: arguments, duration: duration)
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            continue
+        }
+    }
+    return nil
+}
+
+private func discoverPeripheral(maxAttempts: Int = 3) async throws -> ScanSnapshot.Peripheral? {
+    if let peripheral = cachedPeripheral {
+        return peripheral
+    }
+    for _ in 0..<maxAttempts {
+        let baseline = try await scenario.baseline()
+        if let preferred = testConfiguration.preferredPeripheral, let peripheral = baseline.snapshot.peripheral(preferred) {
+            cachedPeripheral = peripheral
+            return peripheral
+        }
+        if let peripheral = baseline.snapshot.peripherals.first {
+            cachedPeripheral = peripheral
+            return peripheral
+        }
+        await scenario.resetBaselineCache()
+        cachedPeripheral = nil
+    }
+    return nil
+}
+
+private func discoverServicePath(maxAttempts: Int = 3) async throws -> (peripheral: ScanSnapshot.Peripheral, service: ScanSnapshot.Peripheral.Service)? {
+    if let cached = cachedServicePath {
+        return cached
+    }
+    for attempt in 0..<maxAttempts {
+        let baseline = try await scenario.baseline()
+        if let path = baseline.snapshot.servicePath(preferredPeripheral: testConfiguration.preferredPeripheral, preferredServiceUUID: testConfiguration.preferredServiceUUID) {
+            cachedPeripheral = path.peripheral
+            cachedServicePath = path
+            return path
+        }
+        for peripheral in baseline.snapshot.peripherals {
+            let argument = "device.\(peripheral.identifier.uuidString)"
+            if let result = try await runWithRetries(arguments: [argument]) {
+                if let path = result.snapshot.servicePath(preferredPeripheral: peripheral.identifier, preferredServiceUUID: testConfiguration.preferredServiceUUID) {
+                    cachedPeripheral = path.peripheral
+                    cachedServicePath = path
+                    return path
+                }
+            }
+        }
+        if attempt + 1 < maxAttempts {
+            cachedPeripheral = nil
+            cachedServicePath = nil
+            await scenario.resetBaselineCache()
+        }
+    }
+    return nil
+}
+
+private func discoverCharacteristicPath(maxAttempts: Int = 3) async throws -> (peripheral: ScanSnapshot.Peripheral, service: ScanSnapshot.Peripheral.Service, characteristic: ScanSnapshot.Peripheral.Service.Characteristic)? {
+    if let cached = cachedCharacteristicPath {
+        return cached
+    }
+    guard let servicePath = try await discoverServicePath(maxAttempts: maxAttempts) else { return nil }
+    if let characteristic = servicePath.service.characteristics.first {
+        let path = (servicePath.peripheral, servicePath.service, characteristic)
+        cachedCharacteristicPath = path
+        return path
+    }
+    for attempt in 0..<maxAttempts {
+        let argument = "device.\(servicePath.peripheral.identifier.uuidString).\(servicePath.service.uuid)"
+        if let result = try await runWithRetries(arguments: [argument]) {
+            if let characteristicPath = result.snapshot.characteristicPath(preferredPeripheral: servicePath.peripheral.identifier, preferredServiceUUID: servicePath.service.uuid, preferredCharacteristicUUID: testConfiguration.preferredCharacteristicUUID) {
+                cachedPeripheral = characteristicPath.peripheral
+                cachedServicePath = (characteristicPath.peripheral, characteristicPath.service)
+                cachedCharacteristicPath = characteristicPath
+                return characteristicPath
+            }
+        }
+        if attempt + 1 < maxAttempts {
+            cachedCharacteristicPath = nil
+        }
+    }
+    return nil
+}
+
+private func discoverDescriptorPath(maxAttempts: Int = 3) async throws -> (peripheral: ScanSnapshot.Peripheral, service: ScanSnapshot.Peripheral.Service, characteristic: ScanSnapshot.Peripheral.Service.Characteristic, descriptor: String)? {
+    if let cached = cachedDescriptorPath {
+        return cached
+    }
+    guard let characteristicPath = try await discoverCharacteristicPath(maxAttempts: maxAttempts) else { return nil }
+    if let descriptor = characteristicPath.characteristic.descriptors.first {
+        let path = (characteristicPath.peripheral, characteristicPath.service, characteristicPath.characteristic, descriptor)
+        cachedDescriptorPath = path
+        return path
+    }
+    for attempt in 0..<maxAttempts {
+        let argument = "device.\(characteristicPath.peripheral.identifier.uuidString).\(characteristicPath.service.uuid).\(characteristicPath.characteristic.uuid)"
+        if let result = try await runWithRetries(arguments: [argument]) {
+            if let descriptorPath = result.snapshot.descriptorPath(preferredPeripheral: characteristicPath.peripheral.identifier, preferredServiceUUID: characteristicPath.service.uuid, preferredCharacteristicUUID: characteristicPath.characteristic.uuid, preferredDescriptorUUID: testConfiguration.preferredDescriptorUUID) {
+                cachedPeripheral = descriptorPath.peripheral
+                cachedServicePath = (descriptorPath.peripheral, descriptorPath.service)
+                cachedCharacteristicPath = (descriptorPath.peripheral, descriptorPath.service, descriptorPath.characteristic)
+                cachedDescriptorPath = descriptorPath
+                return descriptorPath
+            }
+        }
+        if attempt + 1 < maxAttempts {
+            cachedDescriptorPath = nil
+        }
+    }
+    return nil
 }
 
 private struct ScanResult {
@@ -447,19 +602,28 @@ struct ScanCommandTests {
 
     @Test("scan all devices")
     func scanAllDevices() async throws {
-        let result = try await scenario.baseline()
-        #expect(!result.snapshot.peripherals.isEmpty, "Expected at least one peripheral to be discovered during baseline scan.")
+        do {
+            let result = try await scenario.baseline()
+            #expect(!result.snapshot.peripherals.isEmpty, "Expected at least one peripheral to be discovered during baseline scan.")
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            Issue.record("Baseline scan timed out after \(Int(scanTimeoutSeconds)) seconds.")
+        }
     }
 
     @Test("scan by service")
     func scanByService() async throws {
-        let baseline = try await scenario.baseline()
-        guard let path = baseline.snapshot.servicePath(preferredPeripheral: testConfiguration.preferredPeripheral, preferredServiceUUID: testConfiguration.preferredServiceUUID) else {
-            Issue.record("No services discovered during baseline scan; cannot exercise service-specific scan mode.")
+        guard let path = try await discoverServicePath() else {
+            Issue.record("Unable to discover a service within \(Int(scanTimeoutSeconds)) seconds.")
             return
         }
 
-        let result = try await scenario.run(arguments: [path.service.uuid])
+        let result: ScanResult
+        do {
+            result = try await scenario.run(arguments: [path.service.uuid])
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            Issue.record("Service scan timed out after \(Int(scanTimeoutSeconds)) seconds.")
+            return
+        }
         guard let rediscovered = result.snapshot.peripheral(path.peripheral.identifier) else {
             Issue.record("Service scan did not rediscover peripheral \(path.peripheral.identifier). Output:\n\(result.sanitizedOutput)")
             return
@@ -469,14 +633,19 @@ struct ScanCommandTests {
 
     @Test("scan by service and characteristic")
     func scanByServiceCharacteristic() async throws {
-        let baseline = try await scenario.baseline()
-        guard let path = baseline.snapshot.characteristicPath(preferredPeripheral: testConfiguration.preferredPeripheral, preferredServiceUUID: testConfiguration.preferredServiceUUID, preferredCharacteristicUUID: testConfiguration.preferredCharacteristicUUID) else {
-            Issue.record("No characteristics discovered during baseline scan; cannot exercise characteristic-specific scan mode.")
+        guard let path = try await discoverCharacteristicPath() else {
+            Issue.record("Unable to discover a characteristic within \(Int(scanTimeoutSeconds)) seconds.")
             return
         }
 
         let argument = "\(path.service.uuid).\(path.characteristic.uuid)"
-        let result = try await scenario.run(arguments: [argument])
+        let result: ScanResult
+        do {
+            result = try await scenario.run(arguments: [argument])
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            Issue.record("Characteristic scan timed out after \(Int(scanTimeoutSeconds)) seconds.")
+            return
+        }
         guard let peripheral = result.snapshot.peripheral(path.peripheral.identifier) else {
             Issue.record("Characteristic scan did not rediscover peripheral \(path.peripheral.identifier). Output:\n\(result.sanitizedOutput)")
             return
@@ -490,14 +659,19 @@ struct ScanCommandTests {
 
     @Test("scan by service, characteristic, and descriptor")
     func scanByServiceCharacteristicDescriptor() async throws {
-        let baseline = try await scenario.baseline()
-        guard let path = baseline.snapshot.descriptorPath(preferredPeripheral: testConfiguration.preferredPeripheral, preferredServiceUUID: testConfiguration.preferredServiceUUID, preferredCharacteristicUUID: testConfiguration.preferredCharacteristicUUID, preferredDescriptorUUID: testConfiguration.preferredDescriptorUUID) else {
-            Issue.record("No descriptors discovered during baseline scan; cannot exercise descriptor-specific scan mode.")
+        guard let path = try await discoverDescriptorPath() else {
+            Issue.record("Unable to discover a descriptor within \(Int(scanTimeoutSeconds)) seconds.")
             return
         }
 
         let argument = "\(path.service.uuid).\(path.characteristic.uuid).\(path.descriptor)"
-        let result = try await scenario.run(arguments: [argument], duration: testConfiguration.extendedScanDuration)
+        let result: ScanResult
+        do {
+            result = try await scenario.run(arguments: [argument], duration: testConfiguration.extendedScanDuration)
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            Issue.record("Descriptor scan timed out after \(Int(scanTimeoutSeconds)) seconds.")
+            return
+        }
         guard let peripheral = result.snapshot.peripheral(path.peripheral.identifier) else {
             Issue.record("Descriptor scan did not rediscover peripheral \(path.peripheral.identifier). Output:\n\(result.sanitizedOutput)")
             return
@@ -515,33 +689,46 @@ struct ScanCommandTests {
 
     @Test("scan by device identifier")
     func scanByDeviceIdentifier() async throws {
-        let baseline = try await scenario.baseline()
-        let targetPeripheral: ScanSnapshot.Peripheral?
-        if let preferred = testConfiguration.preferredPeripheral {
-            targetPeripheral = baseline.snapshot.peripheral(preferred)
-        } else {
-            targetPeripheral = baseline.snapshot.peripherals.first
-        }
-        guard let peripheral = targetPeripheral else {
-            Issue.record("No peripherals discovered during baseline scan; cannot exercise device-specific scan mode.")
+        guard let peripheral = try await discoverPeripheral() else {
+            Issue.record("No peripherals discovered during scan window; cannot exercise device-specific scan mode.")
             return
         }
 
         let argument = "device.\(peripheral.identifier.uuidString)"
-        let result = try await scenario.run(arguments: [argument])
+        var rediscovered: ScanResult?
+        for _ in 0..<3 {
+            do {
+                let attempt = try await scenario.run(arguments: [argument])
+                if attempt.snapshot.peripheral(peripheral.identifier) != nil {
+                    rediscovered = attempt
+                    break
+                }
+            } catch is Cornucopia.Core.AsyncWithTimeoutError {
+                continue
+            }
+        }
+        guard let result = rediscovered else {
+            Issue.record("Device scan did not rediscover peripheral \(peripheral.identifier).")
+            return
+        }
         #expect(result.snapshot.peripheral(peripheral.identifier) != nil, "Expected to rediscover peripheral \(peripheral.identifier).")
     }
 
     @Test("scan by device and service")
     func scanByDeviceAndService() async throws {
-        let baseline = try await scenario.baseline()
-        guard let path = baseline.snapshot.servicePath(preferredPeripheral: testConfiguration.preferredPeripheral, preferredServiceUUID: testConfiguration.preferredServiceUUID) else {
-            Issue.record("No services discovered during baseline scan; cannot exercise device+service scan mode.")
+        guard let path = try await discoverServicePath() else {
+            Issue.record("Unable to discover a service within \(Int(scanTimeoutSeconds)) seconds.")
             return
         }
 
         let argument = "device.\(path.peripheral.identifier.uuidString).\(path.service.uuid)"
-        let result = try await scenario.run(arguments: [argument])
+        let result: ScanResult
+        do {
+            result = try await scenario.run(arguments: [argument])
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            Issue.record("Device+service scan timed out after \(Int(scanTimeoutSeconds)) seconds.")
+            return
+        }
         guard let peripheral = result.snapshot.peripheral(path.peripheral.identifier) else {
             Issue.record("Device+service scan did not rediscover peripheral \(path.peripheral.identifier). Output:\n\(result.sanitizedOutput)")
             return
@@ -551,14 +738,19 @@ struct ScanCommandTests {
 
     @Test("scan by device, service, and characteristic")
     func scanByDeviceServiceCharacteristic() async throws {
-        let baseline = try await scenario.baseline()
-        guard let path = baseline.snapshot.characteristicPath(preferredPeripheral: testConfiguration.preferredPeripheral, preferredServiceUUID: testConfiguration.preferredServiceUUID, preferredCharacteristicUUID: testConfiguration.preferredCharacteristicUUID) else {
-            Issue.record("No characteristics discovered during baseline scan; cannot exercise device+service+characteristic scan mode.")
+        guard let path = try await discoverCharacteristicPath() else {
+            Issue.record("Unable to discover a characteristic within \(Int(scanTimeoutSeconds)) seconds.")
             return
         }
 
         let argument = "device.\(path.peripheral.identifier.uuidString).\(path.service.uuid).\(path.characteristic.uuid)"
-        let result = try await scenario.run(arguments: [argument])
+        let result: ScanResult
+        do {
+            result = try await scenario.run(arguments: [argument])
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            Issue.record("Device+service+characteristic scan timed out after \(Int(scanTimeoutSeconds)) seconds.")
+            return
+        }
         guard let peripheral = result.snapshot.peripheral(path.peripheral.identifier) else {
             Issue.record("Device+service+characteristic scan did not rediscover peripheral \(path.peripheral.identifier). Output:\n\(result.sanitizedOutput)")
             return
@@ -572,14 +764,19 @@ struct ScanCommandTests {
 
     @Test("scan by device, service, characteristic, and descriptor")
     func scanByDeviceServiceCharacteristicDescriptor() async throws {
-        let baseline = try await scenario.baseline()
-        guard let path = baseline.snapshot.descriptorPath(preferredPeripheral: testConfiguration.preferredPeripheral, preferredServiceUUID: testConfiguration.preferredServiceUUID, preferredCharacteristicUUID: testConfiguration.preferredCharacteristicUUID, preferredDescriptorUUID: testConfiguration.preferredDescriptorUUID) else {
-            Issue.record("No descriptors discovered during baseline scan; cannot exercise full device scan mode.")
+        guard let path = try await discoverDescriptorPath() else {
+            Issue.record("Unable to discover a descriptor within \(Int(scanTimeoutSeconds)) seconds.")
             return
         }
 
         let argument = "device.\(path.peripheral.identifier.uuidString).\(path.service.uuid).\(path.characteristic.uuid).\(path.descriptor)"
-        let result = try await scenario.run(arguments: [argument], duration: testConfiguration.extendedScanDuration)
+        let result: ScanResult
+        do {
+            result = try await scenario.run(arguments: [argument], duration: testConfiguration.extendedScanDuration)
+        } catch is Cornucopia.Core.AsyncWithTimeoutError {
+            Issue.record("Device+service+characteristic+descriptor scan timed out after \(Int(scanTimeoutSeconds)) seconds.")
+            return
+        }
         guard let peripheral = result.snapshot.peripheral(path.peripheral.identifier) else {
             Issue.record("Device+service+characteristic+descriptor scan did not rediscover peripheral \(path.peripheral.identifier). Output:\n\(result.sanitizedOutput)")
             return

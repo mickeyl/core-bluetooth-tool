@@ -33,7 +33,7 @@ struct Bridge: ParsableCommand {
 
         if !device.isEmpty {
             guard device.count == 36, let _ = UUID(uuidString: device) else {
-                print("Argument error: '\(device.count) is not a valid BLE device UUID. Please use the scan subcommand to find device UUIDs.")
+                print("Argument error: '\(device)' is not a valid BLE device UUID. Please use the scan subcommand to find device UUIDs.")
                 Foundation.exit(-1)
             }
         }

@@ -348,7 +348,7 @@ extension Scanner: CBPeripheralDelegate {
         }
         peripheral.services?.forEach { service in
             let primary = service.isPrimary ? "PRIMARY" : ""
-            print("(S) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(service.uuid, color: .yellow)\t\(primary)")
+            print("(S) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(service.uuid.uuidString, color: .yellow)\t\(primary)")
 
             let characteristicsToDiscover = self.characteristicIdentifier.map { [$0] }
             peripheral.discoverCharacteristics(characteristicsToDiscover, for: service)
@@ -398,7 +398,7 @@ extension Scanner: CBPeripheralDelegate {
                 properties.append("Extended")
             }
             let p = properties.joined(separator: ", ")
-            print("(C) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(service.uuid, color: .yellow).\(characteristic.uuid, color: .cyan)\t\(p)")
+            print("(C) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(service.uuid.uuidString, color: .yellow).\(characteristic.uuid.uuidString, color: .cyan)\t\(p)")
             peripheral.discoverDescriptors(for: characteristic)
         }
     }
@@ -409,7 +409,7 @@ extension Scanner: CBPeripheralDelegate {
             return
         }
         characteristic.descriptors?.forEach { descriptor in
-            print("(D) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(characteristic.service!.uuid, color: .yellow).\(characteristic.uuid, color: .cyan).\(descriptor.uuid, color: .red)")
+            print("(D) \(peripheral.identifier, color: .magenta)\t\(peripheral.CC_name, color: .blue)\t\(characteristic.service!.uuid.uuidString, color: .yellow).\(characteristic.uuid.uuidString, color: .cyan).\(descriptor.uuid.uuidString, color: .red)")
         }
     }
 }

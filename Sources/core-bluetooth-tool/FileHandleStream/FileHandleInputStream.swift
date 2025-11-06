@@ -10,6 +10,7 @@ class FileHandleInputStream: InputStream {
     private var _streamStatus: Stream.Status
     private var _streamError: Error?
     private var _delegate: StreamDelegate?
+    private var observingAvailability = false
 
     init(fileHandle: FileHandle, offset: UInt64 = 0) {
         self.fileHandle = fileHandle
@@ -43,26 +44,42 @@ class FileHandleInputStream: InputStream {
 
         NotificationCenter.default.addObserver(self, selector: #selector(onFileHandleDataAvailable), name: Notification.Name.NSFileHandleDataAvailable, object: self.fileHandle)
         self.fileHandle.waitForDataInBackgroundAndNotify()
+        self.observingAvailability = true
         self._streamStatus = .open
         self.delegate?.stream?(self, handle: .openCompleted)
     }
 
-    override var hasBytesAvailable: Bool { true }
+    override var hasBytesAvailable: Bool { self._streamStatus == .open }
 
     override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
         guard _streamStatus == .open else { return 0 }
-        guard let data = try? self.fileHandle.read(upToCount: 1) else {
-            self.delegate?.stream?(self, handle: .endEncountered)
-            return 0
-        }
-        if data.count > 0 {
-            buffer[0] = data[0]
+        do {
+            guard let data = try self.fileHandle.read(upToCount: len) else {
+                self._streamStatus = .atEnd
+                self.delegate?.stream?(self, handle: .endEncountered)
+                return 0
+            }
+            if data.isEmpty {
+                self._streamStatus = .atEnd
+                self.delegate?.stream?(self, handle: .endEncountered)
+                return 0
+            }
+            data.copyBytes(to: buffer, count: data.count)
             self.fileHandle.waitForDataInBackgroundAndNotify()
+            return data.count
+        } catch {
+            self._streamError = error
+            self._streamStatus = .error
+            self.delegate?.stream?(self, handle: .errorOccurred)
+            return -1
         }
-        return data.count
     }
 
     override func close() {
+        if observingAvailability {
+            NotificationCenter.default.removeObserver(self, name: Notification.Name.NSFileHandleDataAvailable, object: self.fileHandle)
+            observingAvailability = false
+        }
         self._streamStatus = .closed
     }
 
@@ -71,6 +88,12 @@ class FileHandleInputStream: InputStream {
     override func setProperty(_ property: Any?, forKey key: Stream.PropertyKey) -> Bool { false }
     override func schedule(in aRunLoop: RunLoop, forMode mode: RunLoop.Mode) { }
     override func remove(from aRunLoop: RunLoop, forMode mode: RunLoop.Mode) { }
+
+    deinit {
+        if observingAvailability {
+            NotificationCenter.default.removeObserver(self, name: Notification.Name.NSFileHandleDataAvailable, object: self.fileHandle)
+        }
+    }
 }
 
 extension FileHandleInputStream {
