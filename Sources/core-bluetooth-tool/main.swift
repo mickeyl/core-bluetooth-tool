@@ -13,6 +13,8 @@ struct CoreBluetoothTool: ParsableCommand {
             Monitor.self,
             Bridge.self,
             Autobridge.self,
+            L2CAPServer.self,
+            L2CAPClient.self,
         ]
     )
     

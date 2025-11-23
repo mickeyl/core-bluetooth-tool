@@ -8,6 +8,7 @@ Bluetooth Low Energy command line tool for macOS.
 * Establish a serial TTY connection to a BLE device
 * Monitor BLE devices in a live table view with customizable sorting
 * Interactively communicate with BLE devices directly from your terminal
+* L2CAP throughput testing (server/client with reconnect and bandwidth metrics)
 * (more planned, but this is v0.4)
 
 ## Quick Start
@@ -95,6 +96,25 @@ core-bluetooth-tool monitor -s interval
 ```
 
 **Note on sorting by interval**: Sorting by beacon interval provides a particularly stable display since BLE devices advertise with fixed, predictable intervals that are part of their design specification. Unlike signal strength which fluctuates due to environmental factors, advertising intervals remain constant and create natural groupings of devices with similar timing characteristics.
+
+### L2CAP throughput test (macOS 10.14+/iOS 11+)
+
+Server: publish an L2CAP PSM (set `0` to auto-assign) and report drops/bandwidth (in-place status line).
+
+```sh
+LOGLEVEL=TRACE core-bluetooth-tool l2cap-server 0 --name L2Test
+```
+
+Client: scan by peripheral name, open the given PSM, and send numbered blocks containing `[seq][uint16 length][data]`. Bandwidth is printed live on the client side as well.
+
+```sh
+LOGLEVEL=TRACE core-bluetooth-tool l2cap-client <psm-from-server> "L2Test" --payload-length 200
+```
+
+Notes:
+- Server and client automatically recover if the peer disconnects/reappears.
+- Payload length is chosen on the client; the server parses the explicit length field and does not need prior knowledge.
+- Bandwidth switches to Kbit/s for rates below 1 Mbit/s.
 
 ## Motivation
 
