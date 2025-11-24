@@ -114,7 +114,7 @@ LOGLEVEL=TRACE core-bluetooth-tool l2cap-client <psm-from-server> "L2Test" --pay
 Notes:
 - Server and client automatically recover if the peer disconnects/reappears.
 - Payload length is chosen on the client; the server parses the explicit length field and does not need prior knowledge.
-- Bandwidth switches to Kbit/s for rates below 1 Mbit/s.
+- Bandwidth switches to KByte/s for rates below 1 MByte/s.
 
 ## Motivation
 
