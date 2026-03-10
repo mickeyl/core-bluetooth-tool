@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "core-bluetooth-tool",
     platforms: [
-        .macOS("12")
+        .macOS("13")
     ],
     products: [
         .executable(name: "core-bluetooth-tool", targets: ["core-bluetooth-tool"]),

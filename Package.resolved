@@ -10,15 +10,6 @@
       }
     },
     {
-      "identity" : "bitbytedata",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tsolomko/BitByteData",
-      "state" : {
-        "revision" : "b4b41619522aacd7aae7b02fa8360833e796a03d",
-        "version" : "2.0.2"
-      }
-    },
-    {
       "identity" : "chalk",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mxcl/Chalk",
@@ -33,7 +24,7 @@
       "location" : "https://github.com/Cornucopia-Swift/CornucopiaCore",
       "state" : {
         "branch" : "master",
-        "revision" : "539f2c81ae1ee2b36836ece117f6b094c80891d3"
+        "revision" : "e01622d5a704c2a7ec007e3b3ebbd32224a061b7"
       }
     },
     {
@@ -42,16 +33,16 @@
       "location" : "https://github.com/Cornucopia-Swift/CornucopiaStreams",
       "state" : {
         "branch" : "master",
-        "revision" : "762d1f9529e0e58ddda463f6a87855d1ca8a105b"
+        "revision" : "964a71377711bf01e7f2dc1b2140e23c0c685b85"
       }
     },
     {
-      "identity" : "swcompression",
+      "identity" : "foundationbandaid",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tsolomko/SWCompression",
+      "location" : "https://github.com/mickeyl/FoundationBandAid",
       "state" : {
-        "revision" : "cd39ca0a3b269173bab06f68b182b72fa690765c",
-        "version" : "4.8.5"
+        "branch" : "master",
+        "revision" : "163e98760ce824d9c880684ec1014228795ef8c3"
       }
     },
     {
@@ -59,8 +50,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-argument-parser",
       "state" : {
-        "revision" : "fee6933f37fde9a5e12a1e4aeaa93fe60116ff2a",
-        "version" : "1.2.2"
+        "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
+        "version" : "1.7.0"
+      }
+    },
+    {
+      "identity" : "swift-asn1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-asn1.git",
+      "state" : {
+        "revision" : "810496cf121e525d660cd0ea89a758740476b85f",
+        "version" : "1.5.1"
       }
     },
     {
@@ -68,8 +68,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto",
       "state" : {
-        "revision" : "ddb07e896a2a8af79512543b1c7eb9797f8898a5",
-        "version" : "1.1.7"
+        "revision" : "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+        "version" : "3.15.1"
       }
     }
   ],
