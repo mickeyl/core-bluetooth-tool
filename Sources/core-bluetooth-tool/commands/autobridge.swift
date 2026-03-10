@@ -10,7 +10,8 @@ import Darwin
 
 fileprivate var alog = OSLog(subsystem: "core-bluetooth-tool", category: "autobridge")
 
-struct Autobridge: ParsableCommand {
+@available(macOS 10.15, *)
+struct Autobridge: AsyncParsableCommand {
 
     public static let configuration = CommandConfiguration(abstract: "Like 'bridge', but also connects your terminal to the created PTY for immediate I/O")
 
@@ -23,7 +24,7 @@ struct Autobridge: ParsableCommand {
     @Option(name: .shortAndLong, help: "The filename to write the PTY path to.")
     var fileName: String?
 
-    func run() throws {
+    func run() async throws {
 
         guard CBUUID.CC_isValid(string: self.uuid) else {
             print("Argument error: '\(self.uuid)' is not a valid Bluetooth UUID. Valid are 16-bit, 32-bit, and 128-bit values.")
@@ -37,19 +38,26 @@ struct Autobridge: ParsableCommand {
             }
         }
 
-        // Create the BLE<->PTY bridge using the existing implementation
-        streamBridge = self.createBridge()
-        self.connectBLE()
+        // 1. Connect to BLE first
+        let streams = try await self.connectBLE()
 
-        // Attach our terminal stdin/stdout directly to the slave PTY for immediate interaction
+        // 2. Now create the BLE<->PTY bridge
+        streamBridge = self.createBridge()
+
+        await MainActor.run {
+            streamBridge.bleInputStream = streams.input
+            streamBridge.bleOutputStream = streams.output
+        }
+
+        // 3. Attach our terminal stdin/stdout directly to the slave PTY for immediate interaction
         let terminal = TerminalSession(slave: streamBridge.slaveHandle)
         terminal.start()
 
         // We handle Ctrl-C (0x03) inside TerminalSession by detecting the byte on stdin
 
-        let loop = RunLoop.current
-        while loop.run(mode: .default, before: Date.distantFuture) {
-            loop.run()
+        while true {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+            await Task.yield()
         }
     }
 }
@@ -95,7 +103,7 @@ private extension Autobridge {
         }
     }
 
-    func connectBLE() {
+    func connectBLE() async throws -> Cornucopia.Streams.StreamPair {
         let uuid = CBUUID(string: self.uuid)
         let url: URL
         if self.device.isEmpty {
@@ -107,16 +115,13 @@ private extension Autobridge {
             url = URL(string: "ble://\(uuid.uuidString)/\(peer.uuidString)")!
         }
 
-        Task {
-            do {
-                let streams = try await Cornucopia.Streams.connect(url: url)
-                FileHandle.standardError.write(Data("Connected to BLE device via \(url.absoluteString).\n".utf8))
-                streamBridge.bleInputStream = streams.0
-                streamBridge.bleOutputStream = streams.1
-            } catch {
-                FileHandle.standardError.write(Data("Error: Can't connect to \(url.absoluteString): \(error.localizedDescription)\n".utf8))
-                Foundation.exit(-1)
-            }
+        do {
+            let streams = try await Cornucopia.Streams.connect(url: url)
+            FileHandle.standardError.write(Data("Connected to BLE device via \(url.absoluteString).\n".utf8))
+            return streams
+        } catch {
+            FileHandle.standardError.write(Data("Error: Can't connect to \(url.absoluteString): \(error.localizedDescription)\n".utf8))
+            Foundation.exit(-1)
         }
     }
 }
@@ -222,7 +227,8 @@ final class TerminalSession {
         if tcgetattr(fd, &t) == 0 {
             self.originalSlaveTerm = t
             cfmakeraw(&t)
-            t.c_lflag &= ~tcflag_t(ECHO) // no local echo on slave
+            // The slave side must not echo, otherwise typed bytes loop back through the PTY.
+            t.c_lflag &= ~tcflag_t(ECHO)
             _ = tcsetattr(fd, TCSANOW, &t)
             self.slaveRawApplied = true
         }

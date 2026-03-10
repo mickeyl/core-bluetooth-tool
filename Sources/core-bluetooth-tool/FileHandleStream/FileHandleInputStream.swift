@@ -10,7 +10,7 @@ class FileHandleInputStream: InputStream {
     private var _streamStatus: Stream.Status
     private var _streamError: Error?
     private var _delegate: StreamDelegate?
-    private var observingAvailability = false
+    private var hasReadabilityHandler = false
 
     init(fileHandle: FileHandle, offset: UInt64 = 0) {
         self.fileHandle = fileHandle
@@ -42,9 +42,11 @@ class FileHandleInputStream: InputStream {
     override func open() {
         guard self._streamStatus != .open else { return }
 
-        NotificationCenter.default.addObserver(self, selector: #selector(onFileHandleDataAvailable), name: Notification.Name.NSFileHandleDataAvailable, object: self.fileHandle)
-        self.fileHandle.waitForDataInBackgroundAndNotify()
-        self.observingAvailability = true
+        self.fileHandle.readabilityHandler = { [weak self] handle in
+            guard let self = self else { return }
+            self.delegate?.stream?(self, handle: .hasBytesAvailable)
+        }
+        self.hasReadabilityHandler = true
         self._streamStatus = .open
         self.delegate?.stream?(self, handle: .openCompleted)
     }
@@ -53,32 +55,25 @@ class FileHandleInputStream: InputStream {
 
     override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
         guard _streamStatus == .open else { return 0 }
-        do {
-            guard let data = try self.fileHandle.read(upToCount: len) else {
-                self._streamStatus = .atEnd
-                self.delegate?.stream?(self, handle: .endEncountered)
-                return 0
-            }
-            if data.isEmpty {
-                self._streamStatus = .atEnd
-                self.delegate?.stream?(self, handle: .endEncountered)
-                return 0
-            }
-            data.copyBytes(to: buffer, count: data.count)
-            self.fileHandle.waitForDataInBackgroundAndNotify()
-            return data.count
-        } catch {
-            self._streamError = error
-            self._streamStatus = .error
-            self.delegate?.stream?(self, handle: .errorOccurred)
-            return -1
+        // Note: readabilityHandler has already signaled data.
+        // We must be careful not to block here if readabilityHandler was triggered but data was already read.
+        // However, FileHandle.read(upToCount:) usually behaves well if there is data.
+        let data = self.fileHandle.availableData
+        if data.isEmpty {
+            // This can happen if EOF
+            self._streamStatus = .atEnd
+            self.delegate?.stream?(self, handle: .endEncountered)
+            return 0
         }
+        let count = min(data.count, len)
+        data.copyBytes(to: buffer, count: count)
+        return count
     }
 
     override func close() {
-        if observingAvailability {
-            NotificationCenter.default.removeObserver(self, name: Notification.Name.NSFileHandleDataAvailable, object: self.fileHandle)
-            observingAvailability = false
+        if hasReadabilityHandler {
+            self.fileHandle.readabilityHandler = nil
+            hasReadabilityHandler = false
         }
         self._streamStatus = .closed
     }
@@ -90,15 +85,8 @@ class FileHandleInputStream: InputStream {
     override func remove(from aRunLoop: RunLoop, forMode mode: RunLoop.Mode) { }
 
     deinit {
-        if observingAvailability {
-            NotificationCenter.default.removeObserver(self, name: Notification.Name.NSFileHandleDataAvailable, object: self.fileHandle)
+        if hasReadabilityHandler {
+            self.fileHandle.readabilityHandler = nil
         }
-    }
-}
-
-extension FileHandleInputStream {
-
-    @objc func onFileHandleDataAvailable() {
-        self.delegate?.stream?(self, handle: .hasBytesAvailable)
     }
 }

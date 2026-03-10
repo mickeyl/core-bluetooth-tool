@@ -2,8 +2,11 @@
 //  (C) Copyright Dr. Michael 'Mickey' Lauer <mickey@vanille-media.de>
 //
 import ArgumentParser
+import Foundation
 
-struct CoreBluetoothTool: ParsableCommand {
+@main
+@available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
+struct CoreBluetoothTool: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "core-bluetooth-tool",
@@ -22,5 +25,3 @@ struct CoreBluetoothTool: ParsableCommand {
         
     }
 }
-
-CoreBluetoothTool.main()
