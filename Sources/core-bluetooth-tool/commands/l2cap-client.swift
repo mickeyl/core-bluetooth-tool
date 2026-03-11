@@ -46,9 +46,8 @@ struct L2CAPClient: ParsableCommand {
         }
         sigintSrc.resume()
 
-        let loop = RunLoop.current
-        while loop.run(mode: .default, before: Date.distantFuture) {
-            loop.run()
+        while true {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
         }
     }
 }
@@ -73,7 +72,7 @@ private final class L2CAPClientSession: NSObject, CBCentralManagerDelegate, CBPe
     private var isScanning = false
     private var totalBytesSent: Int = 0
     private var firstByteTimestamp: Date?
-    private var reportTimer: Timer?
+    private var reportTimer: DispatchSourceTimer?
 
     init(psm: CBL2CAPPSM, targetName: String, payloadLength: Int, targetBlocks: Int?) {
         self.psm = psm
@@ -97,7 +96,7 @@ private final class L2CAPClientSession: NSObject, CBCentralManagerDelegate, CBPe
         }
         self.outputStream?.close()
         self.inputStream?.close()
-        self.reportTimer?.invalidate()
+        self.reportTimer?.cancel()
         self.reportTimer = nil
         self.reportThroughput(newline: true)
         l2capClientLog.info("L2CAP client stopped")
@@ -166,17 +165,22 @@ private final class L2CAPClientSession: NSObject, CBCentralManagerDelegate, CBPe
         self.inputStream = channel.inputStream
 
         self.outputStream?.delegate = self
-        self.outputStream?.schedule(in: .current, forMode: .default)
+        self.outputStream?.schedule(in: .main, forMode: .default)
         self.outputStream?.open()
 
         self.inputStream?.delegate = self
-        self.inputStream?.schedule(in: .current, forMode: .default)
+        self.inputStream?.schedule(in: .main, forMode: .default)
         self.inputStream?.open()
 
         print("Opened L2CAP channel to \(peripheral.identifier). Sending blocks…")
-        self.reportTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(1))
+        timer.setEventHandler { [weak self] in
             self?.reportThroughput()
         }
+        timer.resume()
+        self.reportTimer = timer
         self.pumpWrites()
     }
 
@@ -317,7 +321,7 @@ private final class L2CAPClientSession: NSObject, CBCentralManagerDelegate, CBPe
         self.channel = nil
         self.pendingWrite.removeAll(keepingCapacity: true)
         self.isSending = false
-        self.reportTimer?.invalidate()
+        self.reportTimer?.cancel()
         self.reportTimer = nil
         self.firstByteTimestamp = nil
         self.totalBytesSent = 0

@@ -45,9 +45,8 @@ struct L2CAPServer: ParsableCommand {
         }
         sigintSrc.resume()
 
-        let loop = RunLoop.current
-        while loop.run(mode: .default, before: Date.distantFuture) {
-            loop.run()
+        while true {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
         }
     }
 }
@@ -68,7 +67,7 @@ private final class L2CAPServerSession: NSObject, CBPeripheralManagerDelegate, S
     private var totalBytes: Int = 0
     private var droppedBlocks: Int = 0
     private var firstByteTimestamp: Date?
-    private var reportTimer: Timer?
+    private var reportTimer: DispatchSourceTimer?
 
     init(expectedPSM: CBL2CAPPSM?, advertisedName: String, encrypted: Bool) {
         self.expectedPSM = expectedPSM
@@ -83,7 +82,8 @@ private final class L2CAPServerSession: NSObject, CBPeripheralManagerDelegate, S
     }
 
     func stop() {
-        self.reportTimer?.invalidate()
+        self.reportTimer?.cancel()
+        self.reportTimer = nil
         if let psm = self.publishedPSM {
             self.manager.unpublishL2CAPChannel(psm)
         }
@@ -137,12 +137,17 @@ private final class L2CAPServerSession: NSObject, CBPeripheralManagerDelegate, S
         self.channel = channel
         self.inputStream = channel.inputStream
         self.inputStream?.delegate = self
-        self.inputStream?.schedule(in: .current, forMode: .default)
+        self.inputStream?.schedule(in: .main, forMode: .default)
         self.inputStream?.open()
         print("Accepted L2CAP connection from \(channel.peer.identifier).")
-        self.reportTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(1))
+        timer.setEventHandler { [weak self] in
             self?.reportThroughput()
         }
+        timer.resume()
+        self.reportTimer = timer
     }
 
     // MARK: StreamDelegate
@@ -248,7 +253,7 @@ private final class L2CAPServerSession: NSObject, CBPeripheralManagerDelegate, S
 
     private func handleChannelClosed() {
         self.reportThroughput()
-        self.reportTimer?.invalidate()
+        self.reportTimer?.cancel()
         self.reportTimer = nil
         self.inputStream?.close()
         self.channel = nil

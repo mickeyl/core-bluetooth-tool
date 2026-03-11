@@ -32,9 +32,8 @@ UUID components may be 16-bit, 32-bit, or 128-bit hexadecimal identifiers.
             Foundation.exit(0)
         }
         sigintSrc.resume()
-        let loop = RunLoop.current
-        while loop.run(mode: .default, before: Date.distantFuture) {
-            loop.run()
+        while true {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
         }
     }
 
@@ -268,8 +267,7 @@ class Scanner: NSObject {
     var peripherals: [UUID: CBPeripheral] = [:]
     
     func scan() {
-        self.manager = CBCentralManager()
-        self.manager.delegate = self
+        self.manager = CBCentralManager(delegate: self, queue: nil)
     }
 }
 

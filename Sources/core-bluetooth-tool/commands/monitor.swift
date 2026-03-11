@@ -60,9 +60,8 @@ struct Monitor: ParsableCommand {
         }
         sigintSrc.resume()
         
-        let loop = RunLoop.current
-        while loop.run(mode: .default, before: Date.distantFuture) {
-            loop.run()
+        while true {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
         }
     }
 }
@@ -206,28 +205,34 @@ class DeviceMonitor: NSObject {
     
     private var manager: CBCentralManager!
     private var devices: [UUID: DeviceEntry] = [:]
-    private var displayTimer: Timer?
+    private var displayTimer: DispatchSourceTimer?
     private var isFirstDisplay = true
     var serviceFilter: CBUUID?
     var maxDevices: Int = 30
     var sortColumn: SortColumn = .signal
     
     func startMonitoring() {
-        self.manager = CBCentralManager()
-        self.manager.delegate = self
+        self.manager = CBCentralManager(delegate: self, queue: nil)
         
         print("\u{001B}[?25l")
         print("\u{001B}[2J")
         print("\u{001B}[H")
-        
-        displayTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            self.updateDisplay()
+
+        self.updateDisplay()
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+        timer.setEventHandler { [weak self] in
+            self?.updateDisplay()
         }
+        timer.resume()
+        displayTimer = timer
     }
     
     func cleanup() {
         print("\u{001B}[?25h")
-        displayTimer?.invalidate()
+        displayTimer?.cancel()
+        displayTimer = nil
     }
     
     private func updateDisplay() {
