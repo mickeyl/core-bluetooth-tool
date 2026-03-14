@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-15
+            xcode: "26.0.1"
+          - os: macos-15
+            xcode: "26.3"
+    runs-on: ${{ matrix.os }}
+    name: macOS 15 / Xcode ${{ matrix.xcode }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+      - name: Build
+        run: swift build -c release --disable-sandbox
