@@ -5,10 +5,12 @@ import PackageDescription
 let package = Package(
     name: "core-bluetooth-tool",
     platforms: [
-        .macOS("13")
+        .macOS("13"),
+        .iOS("16"),
     ],
     products: [
         .executable(name: "core-bluetooth-tool", targets: ["core-bluetooth-tool"]),
+        .library(name: "L2CAPBenchKit", targets: ["L2CAPBenchKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", "1.2.2"..<"1.6.0"),
@@ -17,9 +19,11 @@ let package = Package(
         //.package(path: "../CornucopiaStreams")
     ],
     targets: [
+        .target(name: "L2CAPBenchKit"),
         .executableTarget(
             name: "core-bluetooth-tool",
             dependencies: [
+                "L2CAPBenchKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Chalk", package: "Chalk"),
                 .product(name: "CornucopiaStreams", package: "CornucopiaStreams"),
@@ -36,5 +40,6 @@ let package = Package(
         .testTarget(
             name: "core-bluetooth-toolTests",
             dependencies: ["core-bluetooth-tool"]),
+        .testTarget(name: "L2CAPBenchKitTests", dependencies: ["L2CAPBenchKit"]),
     ]
 )
